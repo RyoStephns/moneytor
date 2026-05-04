@@ -231,16 +231,17 @@ export async function getFinanceSummary(filters: SummaryFilters) {
     params
   );
 
+  const periodExpression = `DATE_FORMAT(occurred_at, '${periodFormat}')`;
   const [byPeriod] = await pool.execute<mysql.RowDataPacket[]>(
     `
-      SELECT DATE_FORMAT(occurred_at, ?) AS period, type, currency,
+      SELECT ${periodExpression} AS period, type, currency,
         COUNT(*) AS transaction_count, COALESCE(SUM(amount), 0) AS total
       FROM transactions
       ${whereSql}
-      GROUP BY DATE_FORMAT(occurred_at, ?), type, currency
+      GROUP BY ${periodExpression}, type, currency
       ORDER BY period ASC, type ASC
     `,
-    [periodFormat, ...params, periodFormat]
+    params
   );
 
   const totalIncome = Number(totals[0]?.total_income ?? 0);
