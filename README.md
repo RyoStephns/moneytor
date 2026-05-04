@@ -50,8 +50,8 @@ FLUSH PRIVILEGES;
 
 ## Tools
 
-- `add_transaction`: records one `income` or `expense`.
-- `list_transactions`: fetches rows by date range, type, category, account, tag, currency, limit, and offset.
+- `add_transaction`: records one `income` or `expense` using `DEFAULT_CURRENCY`.
+- `list_transactions`: fetches rows by date range, type, category, account, tag, limit, and offset.
 - `get_finance_summary`: returns totals and breakdowns by category, account, and day/month.
 - `update_transaction`: corrects an existing transaction.
 - `delete_transaction`: deletes a mistaken transaction by `id`.

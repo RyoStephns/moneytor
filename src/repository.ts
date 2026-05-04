@@ -23,7 +23,6 @@ export type Transaction = {
 export type AddTransactionInput = {
   type: TransactionType;
   amount: number;
-  currency?: string;
   category: string;
   description?: string;
   date?: string;
@@ -37,7 +36,6 @@ export type TransactionFilters = {
   start_date?: string;
   end_date?: string;
   type?: TransactionType;
-  currency?: string;
   category?: string;
   account?: string;
   tag?: string;
@@ -86,7 +84,6 @@ export async function closePool(): Promise<void> {
 }
 
 export async function addTransaction(input: AddTransactionInput): Promise<Transaction> {
-  const currency = normalizeCurrency(input.currency) ?? config.defaultCurrency;
   const occurredAt = parseInputDate(input.date);
   const tags = normalizeTags(input.tags);
 
@@ -99,7 +96,7 @@ export async function addTransaction(input: AddTransactionInput): Promise<Transa
     [
       input.type,
       input.amount,
-      currency,
+      config.defaultCurrency,
       input.category,
       input.description ?? null,
       occurredAt,
@@ -158,7 +155,6 @@ export async function updateTransaction(input: UpdateTransactionInput): Promise<
 
   addUpdate(updates, params, "type", input.type);
   addUpdate(updates, params, "amount", input.amount);
-  addUpdate(updates, params, "currency", normalizeCurrency(input.currency));
   addUpdate(updates, params, "category", input.category);
   addUpdate(updates, params, "description", input.description);
   addUpdate(updates, params, "occurred_at", input.date ? parseInputDate(input.date) : undefined);
@@ -274,7 +270,6 @@ function buildWhere(filters: TransactionFilters): QueryParts {
   addClause(clauses, params, "occurred_at >= ?", parseStartDate(filters.start_date));
   addClause(clauses, params, "occurred_at <= ?", parseEndDate(filters.end_date));
   addClause(clauses, params, "type = ?", filters.type);
-  addClause(clauses, params, "currency = ?", normalizeCurrency(filters.currency));
   addClause(clauses, params, "category = ?", filters.category);
   addClause(clauses, params, "account = ?", filters.account);
 
@@ -305,14 +300,6 @@ function addUpdate(updates: string[], params: SqlParam[], column: string, value:
 
   updates.push(`${column} = ?`);
   params.push(value);
-}
-
-function normalizeCurrency(currency: string | undefined): string | undefined {
-  if (currency === undefined) {
-    return undefined;
-  }
-
-  return currency.trim().toUpperCase();
 }
 
 function normalizeTags(tags: string[] | undefined): string[] {
