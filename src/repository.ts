@@ -141,9 +141,9 @@ export async function listTransactions(filters: TransactionFilters): Promise<Tra
       FROM transactions
       ${whereSql}
       ORDER BY occurred_at DESC, id DESC
-      LIMIT ? OFFSET ?
+      LIMIT ${limit} OFFSET ${offset}
     `,
-    [...params, limit, offset]
+    params
   );
 
   return rows.map(mapTransaction);
