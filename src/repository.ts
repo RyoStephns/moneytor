@@ -56,8 +56,52 @@ export type SummaryFilters = Omit<TransactionFilters, "tag" | "limit" | "offset"
   period?: "day" | "month";
 };
 
+export type BalanceFilters = Pick<TransactionFilters, "start_date" | "end_date" | "account">;
+
+export type AverageFilters = Pick<TransactionFilters, "start_date" | "end_date" | "category" | "account"> & {
+  period?: "day" | "month";
+};
+
+export type RecurringTransaction = {
+  id: number;
+  type: TransactionType;
+  amount: string;
+  currency: string;
+  category: string;
+  description: string | null;
+  account: string | null;
+  tags: string[];
+  source: string | null;
+  notes: string | null;
+  interval_months: number;
+  day_of_month: number;
+  next_due_date: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RegisterRecurringInput = {
+  type: TransactionType;
+  amount: number;
+  category: string;
+  description?: string;
+  account?: string;
+  tags?: string[];
+  source?: string;
+  notes?: string;
+  interval_months?: number;
+  day_of_month: number;
+  start_date?: string;
+};
+
 type MysqlTransactionRow = mysql.RowDataPacket & Omit<Transaction, "tags"> & {
   tags_json: string | string[];
+};
+
+type MysqlRecurringRow = mysql.RowDataPacket & Omit<RecurringTransaction, "tags" | "is_active"> & {
+  tags_json: string | string[];
+  is_active: number;
 };
 
 type QueryParts = {
@@ -264,6 +308,177 @@ export async function getFinanceSummary(filters: SummaryFilters) {
   };
 }
 
+export async function getTotalBalance(filters: BalanceFilters) {
+  const { whereSql, params } = buildWhere(filters as TransactionFilters);
+
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS total_income,
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS total_expense,
+        COUNT(*) AS transaction_count
+      FROM transactions
+      ${whereSql}
+    `,
+    params
+  );
+
+  const totalIncome = Number(rows[0]?.total_income ?? 0);
+  const totalExpense = Number(rows[0]?.total_expense ?? 0);
+
+  return {
+    filters,
+    total_income: totalIncome,
+    total_expense: totalExpense,
+    balance: totalIncome - totalExpense,
+    transaction_count: Number(rows[0]?.transaction_count ?? 0)
+  };
+}
+
+export async function getAverages(filters: AverageFilters) {
+  const { whereSql, params } = buildWhere(filters as TransactionFilters);
+  const periodFormat = filters.period === "day" ? "%Y-%m-%d" : "%Y-%m";
+  const periodExpr = `DATE_FORMAT(occurred_at, '${periodFormat}')`;
+
+  const [byPeriod] = await pool.execute<mysql.RowDataPacket[]>(
+    `
+      SELECT ${periodExpr} AS period,
+        COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS period_income,
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS period_expense,
+        COUNT(*) AS transaction_count
+      FROM transactions
+      ${whereSql}
+      GROUP BY ${periodExpr}
+      ORDER BY period ASC
+    `,
+    params
+  );
+
+  const periodCount = byPeriod.length;
+  const totalIncome = byPeriod.reduce((s, r) => s + Number(r.period_income), 0);
+  const totalExpense = byPeriod.reduce((s, r) => s + Number(r.period_expense), 0);
+
+  return {
+    filters: { ...filters, period: filters.period ?? "month" },
+    period_count: periodCount,
+    average_income: periodCount > 0 ? totalIncome / periodCount : 0,
+    average_expense: periodCount > 0 ? totalExpense / periodCount : 0,
+    average_net: periodCount > 0 ? (totalIncome - totalExpense) / periodCount : 0,
+    by_period: byPeriod.map((r) => ({
+      period: r.period,
+      income: Number(r.period_income),
+      expense: Number(r.period_expense),
+      net: Number(r.period_income) - Number(r.period_expense),
+      transaction_count: Number(r.transaction_count)
+    }))
+  };
+}
+
+export async function registerRecurring(input: RegisterRecurringInput): Promise<RecurringTransaction> {
+  const tags = normalizeTags(input.tags);
+  const intervalMonths = input.interval_months ?? 1;
+  const nextDueDate = calcInitialDueDate(input.day_of_month, intervalMonths, input.start_date);
+
+  const [result] = await pool.execute<mysql.ResultSetHeader>(
+    `
+      INSERT INTO recurring_transactions
+        (type, amount, currency, category, description, account, tags_json, source, notes, interval_months, day_of_month, next_due_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      input.type,
+      input.amount,
+      config.defaultCurrency,
+      input.category,
+      input.description ?? null,
+      input.account ?? null,
+      JSON.stringify(tags),
+      input.source ?? "claude.ai",
+      input.notes ?? null,
+      intervalMonths,
+      input.day_of_month,
+      nextDueDate
+    ]
+  );
+
+  return getRecurring(result.insertId);
+}
+
+export async function getRecurring(id: number): Promise<RecurringTransaction> {
+  const [rows] = await pool.execute<MysqlRecurringRow[]>(
+    `SELECT * FROM recurring_transactions WHERE id = ? LIMIT 1`,
+    [id]
+  );
+
+  if (!rows[0]) {
+    throw new Error(`Recurring transaction not found: ${id}`);
+  }
+
+  return mapRecurring(rows[0]);
+}
+
+export async function listRecurring(includeInactive = false): Promise<RecurringTransaction[]> {
+  const [rows] = await pool.execute<MysqlRecurringRow[]>(
+    `SELECT * FROM recurring_transactions ${includeInactive ? "" : "WHERE is_active = 1"} ORDER BY next_due_date ASC, id ASC`
+  );
+
+  return rows.map(mapRecurring);
+}
+
+export async function deleteRecurring(id: number): Promise<{ deleted: boolean; id: number }> {
+  const [result] = await pool.execute<mysql.ResultSetHeader>(
+    `DELETE FROM recurring_transactions WHERE id = ?`,
+    [id]
+  );
+
+  return { deleted: result.affectedRows > 0, id };
+}
+
+export async function processRecurring(): Promise<{ processed: number; transactions: Transaction[] }> {
+  const todayStr = new Date().toISOString().substring(0, 10);
+
+  const [dueRows] = await pool.execute<MysqlRecurringRow[]>(
+    `SELECT * FROM recurring_transactions WHERE is_active = 1 AND next_due_date <= ? ORDER BY next_due_date ASC`,
+    [todayStr]
+  );
+
+  const transactions: Transaction[] = [];
+  const MAX_PER_ENTRY = 24;
+
+  for (const row of dueRows) {
+    let nextDue = toDateString(row.next_due_date);
+    let count = 0;
+
+    while (nextDue <= todayStr && count < MAX_PER_ENTRY) {
+      const rawTags = row.tags_json;
+      const tags = Array.isArray(rawTags) ? rawTags : JSON.parse(rawTags as string);
+
+      const tx = await addTransaction({
+        type: row.type,
+        amount: Number(row.amount),
+        category: row.category,
+        description: row.description ?? undefined,
+        date: nextDue,
+        account: row.account ?? undefined,
+        tags,
+        source: row.source ?? "recurring",
+        notes: row.notes ?? undefined
+      });
+
+      transactions.push(tx);
+      nextDue = calcNextDueDate(nextDue, Number(row.day_of_month), Number(row.interval_months));
+      count++;
+    }
+
+    await pool.execute<mysql.ResultSetHeader>(
+      `UPDATE recurring_transactions SET next_due_date = ?, updated_at = ? WHERE id = ?`,
+      [nextDue, nowForMysql(), row.id]
+    );
+  }
+
+  return { processed: transactions.length, transactions };
+}
+
 function buildWhere(filters: TransactionFilters): QueryParts {
   const clauses: string[] = [];
   const params: SqlParam[] = [];
@@ -309,6 +524,63 @@ function normalizeTags(tags: string[] | undefined): string[] {
   }
 
   return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))];
+}
+
+function toDateString(val: unknown): string {
+  if (val instanceof Date) return val.toISOString().substring(0, 10);
+  return String(val).substring(0, 10);
+}
+
+function calcInitialDueDate(dayOfMonth: number, intervalMonths: number, startDate?: string): string {
+  if (startDate) {
+    return startDate.substring(0, 10);
+  }
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1; // 1-indexed
+  const today = now.getDate();
+
+  if (today < dayOfMonth) {
+    return `${year}-${String(month).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
+  }
+
+  const advanced = month - 1 + intervalMonths;
+  const newYear = year + Math.floor(advanced / 12);
+  const newMonth = (advanced % 12) + 1;
+  return `${newYear}-${String(newMonth).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
+}
+
+function calcNextDueDate(fromDue: string, dayOfMonth: number, intervalMonths: number): string {
+  const [yearStr, monthStr] = fromDue.split("-");
+  const advanced = parseInt(monthStr) - 1 + intervalMonths; // 0-indexed after advance
+  const newYear = parseInt(yearStr) + Math.floor(advanced / 12);
+  const newMonth = (advanced % 12) + 1; // back to 1-indexed
+  return `${newYear}-${String(newMonth).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
+}
+
+function mapRecurring(row: MysqlRecurringRow): RecurringTransaction {
+  const rawTags = row.tags_json;
+  const tags = Array.isArray(rawTags) ? rawTags : JSON.parse(rawTags as string);
+
+  return {
+    id: Number(row.id),
+    type: row.type,
+    amount: String(row.amount),
+    currency: row.currency,
+    category: row.category,
+    description: row.description,
+    account: row.account,
+    tags,
+    source: row.source,
+    notes: row.notes,
+    interval_months: Number(row.interval_months),
+    day_of_month: Number(row.day_of_month),
+    next_due_date: toDateString(row.next_due_date),
+    is_active: Boolean(row.is_active),
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at)
+  };
 }
 
 function mapTransaction(row: MysqlTransactionRow): Transaction {

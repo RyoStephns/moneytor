@@ -1,0 +1,19 @@
+CREATE TABLE IF NOT EXISTS recurring_transactions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  type ENUM('income', 'expense') NOT NULL,
+  amount DECIMAL(18, 2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'IDR',
+  category VARCHAR(120) NOT NULL,
+  description VARCHAR(500) NULL,
+  account VARCHAR(120) NULL,
+  tags_json JSON NOT NULL,
+  source VARCHAR(120) NULL,
+  notes TEXT NULL,
+  interval_months TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  day_of_month TINYINT UNSIGNED NOT NULL,
+  next_due_date DATE NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_recurring_due (next_due_date, is_active)
+);
