@@ -86,3 +86,7 @@ export const listRecurringSchema = {
 export const deleteRecurringSchema = {
   id: z.number().int().positive()
 };
+
+export const addCategorySchema = {
+  name: z.string().min(1).max(120).describe("Category name to register.")
+};

@@ -127,9 +127,39 @@ export async function closePool(): Promise<void> {
   await pool.end();
 }
 
+export async function listCategories(): Promise<string[]> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT name FROM categories ORDER BY name ASC`
+  );
+  return rows.map((r) => String(r.name));
+}
+
+export async function addCategory(name: string): Promise<{ name: string }> {
+  const trimmed = name.trim();
+  await pool.execute<mysql.ResultSetHeader>(
+    `INSERT IGNORE INTO categories (name) VALUES (?)`,
+    [trimmed]
+  );
+  return { name: trimmed };
+}
+
 export async function addTransaction(input: AddTransactionInput): Promise<Transaction> {
   const occurredAt = parseInputDate(input.date);
   const tags = normalizeTags(input.tags);
+
+  const [catRows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT name FROM categories WHERE name = ? LIMIT 1`,
+    [input.category]
+  );
+  const [countRows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT COUNT(*) AS total FROM categories`
+  );
+  const total = Number(countRows[0]?.total ?? 0);
+  if (total > 0 && catRows.length === 0) {
+    throw new Error(
+      `Unknown category "${input.category}". Use list_categories to see valid options, or add_category to register a new one.`
+    );
+  }
 
   const [result] = await pool.execute<mysql.ResultSetHeader>(
     `

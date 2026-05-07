@@ -1,11 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  addCategory,
   addTransaction,
   deleteTransaction,
   deleteRecurring,
   getAverages,
   getFinanceSummary,
   getTotalBalance,
+  listCategories,
   listRecurring,
   listTransactions,
   processRecurring,
@@ -13,6 +15,7 @@ import {
   updateTransaction
 } from "./repository.js";
 import {
+  addCategorySchema,
   addTransactionSchema,
   averagesSchema,
   deleteRecurringSchema,
@@ -43,10 +46,30 @@ export function createMoneytorServer(): McpServer {
   });
 
   server.registerTool(
+    "list_categories",
+    {
+      title: "List categories",
+      description: "List all registered transaction categories. Always call this before add_transaction to pick a valid category.",
+      inputSchema: {}
+    },
+    async () => jsonResult(await listCategories())
+  );
+
+  server.registerTool(
+    "add_category",
+    {
+      title: "Add category",
+      description: "Register a new transaction category. Required before using a category that doesn't exist yet.",
+      inputSchema: addCategorySchema
+    },
+    async (input) => jsonResult(await addCategory(input.name))
+  );
+
+  server.registerTool(
     "add_transaction",
     {
       title: "Add transaction",
-      description: "Record one personal finance income or expense transaction.",
+      description: "Record one personal finance income or expense transaction. The category field must match an existing category from list_categories. Use add_category first if needed.",
       inputSchema: addTransactionSchema
     },
     async (input) => jsonResult(await addTransaction(input))
