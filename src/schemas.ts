@@ -21,7 +21,7 @@ export const listTransactionsSchema = {
   category: z.string().max(120).optional(),
   account: z.string().max(120).optional(),
   tag: z.string().max(60).optional().describe("Return rows containing this tag."),
-  keyword: z.string().max(200).optional().describe("Free-text search across description, notes, category, and account fields."),
+  keyword: z.string().max(200).optional().describe("Free-text search across description and notes fields. Use category/account filters for exact-match filtering."),
   limit: z.number().int().positive().max(500).default(100),
   offset: z.number().int().min(0).default(0)
 };

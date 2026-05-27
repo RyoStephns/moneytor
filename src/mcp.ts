@@ -81,7 +81,7 @@ export function createMoneytorServer(): McpServer {
     "list_transactions",
     {
       title: "List transactions",
-      description: "Fetch and filter personal finance transactions. Supports date range, type, category, account, tag, and free-text keyword search across description, notes, category, and account.",
+      description: "Fetch and filter personal finance transactions. Supports date range, type, category, account, tag filters, and free-text keyword search across description and notes.",
       inputSchema: listTransactionsSchema
     },
     async (input) => jsonResult(await listTransactions(input))

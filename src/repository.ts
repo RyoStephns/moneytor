@@ -536,8 +536,8 @@ function buildWhere(filters: TransactionFilters): QueryParts {
 
   if (filters.keyword) {
     const like = `%${filters.keyword}%`;
-    clauses.push("(description LIKE ? OR notes LIKE ? OR category LIKE ? OR account LIKE ?)");
-    params.push(like, like, like, like);
+    clauses.push("(description LIKE ? OR notes LIKE ?)");
+    params.push(like, like);
   }
 
   return {
