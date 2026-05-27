@@ -262,11 +262,6 @@ export async function updateTransaction(input: UpdateTransactionInput): Promise<
   return getTransaction(input.id);
 }
 
-export async function deleteTransaction(id: number): Promise<{ deleted: boolean; id: number }> {
-  const [result] = await pool.execute<mysql.ResultSetHeader>("DELETE FROM transactions WHERE id = ?", [id]);
-  return { deleted: result.affectedRows > 0, id };
-}
-
 export async function deleteTransactions(ids: number[]): Promise<{ deleted: number; ids: number[] }> {
   const placeholders = ids.map(() => "?").join(", ");
   const [result] = await pool.execute<mysql.ResultSetHeader>(

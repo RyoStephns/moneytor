@@ -43,9 +43,6 @@ export const deleteTransactionsSchema = {
   ids: z.array(z.number().int().positive()).min(1).max(100).describe("List of transaction IDs to delete.")
 };
 
-export const deleteTransactionSchema = {
-  id: z.number().int().positive()
-};
 
 export const summarySchema = {
   start_date: z.string().optional().describe("Inclusive ISO date or datetime lower bound."),
