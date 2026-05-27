@@ -39,6 +39,7 @@ export type TransactionFilters = {
   category?: string;
   account?: string;
   tag?: string;
+  keyword?: string;
   limit?: number;
   offset?: number;
 };
@@ -264,6 +265,15 @@ export async function updateTransaction(input: UpdateTransactionInput): Promise<
 export async function deleteTransaction(id: number): Promise<{ deleted: boolean; id: number }> {
   const [result] = await pool.execute<mysql.ResultSetHeader>("DELETE FROM transactions WHERE id = ?", [id]);
   return { deleted: result.affectedRows > 0, id };
+}
+
+export async function deleteTransactions(ids: number[]): Promise<{ deleted: number; ids: number[] }> {
+  const placeholders = ids.map(() => "?").join(", ");
+  const [result] = await pool.execute<mysql.ResultSetHeader>(
+    `DELETE FROM transactions WHERE id IN (${placeholders})`,
+    ids
+  );
+  return { deleted: result.affectedRows, ids };
 }
 
 export async function getFinanceSummary(filters: SummaryFilters) {
@@ -522,6 +532,12 @@ function buildWhere(filters: TransactionFilters): QueryParts {
   if (filters.tag) {
     clauses.push("JSON_CONTAINS(tags_json, JSON_QUOTE(?), '$')");
     params.push(filters.tag);
+  }
+
+  if (filters.keyword) {
+    const like = `%${filters.keyword}%`;
+    clauses.push("(description LIKE ? OR notes LIKE ? OR category LIKE ? OR account LIKE ?)");
+    params.push(like, like, like, like);
   }
 
   return {

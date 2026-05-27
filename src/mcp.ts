@@ -3,6 +3,7 @@ import {
   addCategory,
   addTransaction,
   deleteTransaction,
+  deleteTransactions,
   deleteRecurring,
   getAverages,
   getFinanceSummary,
@@ -20,6 +21,7 @@ import {
   averagesSchema,
   deleteRecurringSchema,
   deleteTransactionSchema,
+  deleteTransactionsSchema,
   listRecurringSchema,
   listTransactionsSchema,
   registerRecurringSchema,
@@ -79,7 +81,7 @@ export function createMoneytorServer(): McpServer {
     "list_transactions",
     {
       title: "List transactions",
-      description: "Fetch personal finance transactions for review or summary.",
+      description: "Fetch and filter personal finance transactions. Supports date range, type, category, account, tag, and free-text keyword search across description, notes, category, and account.",
       inputSchema: listTransactionsSchema
     },
     async (input) => jsonResult(await listTransactions(input))
@@ -99,7 +101,7 @@ export function createMoneytorServer(): McpServer {
     "update_transaction",
     {
       title: "Update transaction",
-      description: "Correct an existing personal finance transaction.",
+      description: "Edit one or more fields of an existing transaction (amount, type, category, description, date, account, tags, notes). Only supply the fields you want to change — omitted fields are left as-is.",
       inputSchema: updateTransactionSchema
     },
     async (input) => jsonResult(await updateTransaction(input))
@@ -109,13 +111,26 @@ export function createMoneytorServer(): McpServer {
     "delete_transaction",
     {
       title: "Delete transaction",
-      description: "Delete a mistaken personal finance transaction by id.",
+      description: "Delete a single transaction by id.",
       inputSchema: deleteTransactionSchema,
       annotations: {
         destructiveHint: true
       }
     },
     async (input) => jsonResult(await deleteTransaction(input.id))
+  );
+
+  server.registerTool(
+    "delete_transactions",
+    {
+      title: "Delete multiple transactions",
+      description: "Delete several transactions at once by passing an array of IDs. Use when cleaning up multiple wrong or duplicate entries.",
+      inputSchema: deleteTransactionsSchema,
+      annotations: {
+        destructiveHint: true
+      }
+    },
+    async (input) => jsonResult(await deleteTransactions(input.ids))
   );
 
   server.registerTool(

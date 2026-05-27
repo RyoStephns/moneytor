@@ -21,21 +21,26 @@ export const listTransactionsSchema = {
   category: z.string().max(120).optional(),
   account: z.string().max(120).optional(),
   tag: z.string().max(60).optional().describe("Return rows containing this tag."),
+  keyword: z.string().max(200).optional().describe("Free-text search across description, notes, category, and account fields."),
   limit: z.number().int().positive().max(500).default(100),
   offset: z.number().int().min(0).default(0)
 };
 
 export const updateTransactionSchema = {
-  id: z.number().int().positive(),
-  type: transactionTypeSchema.optional(),
-  amount: z.number().positive().optional(),
-  category: z.string().min(1).max(120).optional(),
-  description: z.string().max(500).nullable().optional(),
-  date: z.string().optional(),
-  account: z.string().max(120).nullable().optional(),
-  tags: z.array(z.string().min(1).max(60)).max(20).optional(),
-  source: z.string().max(120).nullable().optional(),
-  notes: z.string().max(2000).nullable().optional()
+  id: z.number().int().positive().describe("ID of the transaction to update."),
+  type: transactionTypeSchema.optional().describe("Change transaction type to income or expense."),
+  amount: z.number().positive().optional().describe("New amount as a positive number."),
+  category: z.string().min(1).max(120).optional().describe("New category. Must match an existing category from list_categories."),
+  description: z.string().max(500).optional().describe("New short description. Omit to leave unchanged."),
+  date: z.string().optional().describe("New ISO date or datetime for when the transaction occurred."),
+  account: z.string().max(120).optional().describe("New account/wallet/card. Omit to leave unchanged."),
+  tags: z.array(z.string().min(1).max(60)).max(20).optional().describe("Replacement tag list. Omit to leave unchanged."),
+  source: z.string().max(120).optional().describe("New source label. Omit to leave unchanged."),
+  notes: z.string().max(2000).optional().describe("New long-form notes. Omit to leave unchanged.")
+};
+
+export const deleteTransactionsSchema = {
+  ids: z.array(z.number().int().positive()).min(1).max(100).describe("List of transaction IDs to delete.")
 };
 
 export const deleteTransactionSchema = {
