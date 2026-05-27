@@ -982,8 +982,8 @@ export async function getGroupDetail(pay_period_id: number, budget_group_id: num
 
 export async function saveBudgetTemplate(name: string, groups: GroupInput[]): Promise<BudgetTemplate> {
   await pool.execute(
-    `INSERT INTO budget_templates (name, groups) VALUES (?, ?)
-     ON DUPLICATE KEY UPDATE groups = VALUES(groups), updated_at = NOW()`,
+    `INSERT INTO budget_templates (name, groups_json) VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE groups_json = VALUES(groups_json), updated_at = NOW()`,
     [name, JSON.stringify(groups)]
   );
   const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE name = ? LIMIT 1`, [name]);
@@ -999,9 +999,9 @@ export async function applyBudgetTemplate(pay_period_id: number, template_id: nu
   const [tRows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE id = ? LIMIT 1`, [template_id]);
   if (tRows.length === 0) throw new Error(`Template ${template_id} not found`);
 
-  const groups: GroupInput[] = typeof tRows[0].groups === "string"
-    ? JSON.parse(tRows[0].groups) as GroupInput[]
-    : tRows[0].groups as GroupInput[];
+  const groups: GroupInput[] = typeof tRows[0].groups_json === "string"
+    ? JSON.parse(tRows[0].groups_json) as GroupInput[]
+    : tRows[0].groups_json as GroupInput[];
 
   if (groups.length === 0) throw new Error(`Template ${template_id} has no groups — refusing to wipe pay period`);
 
@@ -1024,7 +1024,7 @@ function mapTemplateRow(row: mysql.RowDataPacket): BudgetTemplate {
   return {
     id: Number(row.id),
     name: String(row.name),
-    groups: typeof row.groups === "string" ? JSON.parse(row.groups) as GroupInput[] : row.groups as GroupInput[],
+    groups: typeof row.groups_json === "string" ? JSON.parse(row.groups_json) as GroupInput[] : row.groups_json as GroupInput[],
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
     updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
   };

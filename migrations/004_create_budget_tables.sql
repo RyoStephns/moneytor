@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS budget_group_categories (
 CREATE TABLE IF NOT EXISTS budget_templates (
     id         INT AUTO_INCREMENT PRIMARY KEY,
     name       VARCHAR(120) NOT NULL,
-    groups     JSON NOT NULL,
+    groups_json JSON NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_template_name (name)
