@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   addCategory,
   addTransaction,
+  deleteTransaction,
   deleteTransactions,
   deleteRecurring,
   getAverages,
@@ -19,6 +20,7 @@ import {
   addTransactionSchema,
   averagesSchema,
   deleteRecurringSchema,
+  deleteTransactionSchema,
   deleteTransactionsSchema,
   listRecurringSchema,
   listTransactionsSchema,
@@ -103,6 +105,17 @@ export function createMoneytorServer(): McpServer {
       inputSchema: updateTransactionSchema
     },
     async (input) => jsonResult(await updateTransaction(input))
+  );
+
+  server.registerTool(
+    "delete_transaction",
+    {
+      title: "Delete transaction",
+      description: "Delete a single transaction by id.",
+      inputSchema: deleteTransactionSchema,
+      annotations: { destructiveHint: true }
+    },
+    async (input) => jsonResult(await deleteTransaction(input.id))
   );
 
   server.registerTool(

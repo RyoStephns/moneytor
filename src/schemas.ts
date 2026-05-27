@@ -39,6 +39,10 @@ export const updateTransactionSchema = {
   notes: z.string().max(2000).optional().describe("New long-form notes. Omit to leave unchanged.")
 };
 
+export const deleteTransactionSchema = {
+  id: z.number().int().positive().describe("ID of the transaction to delete.")
+};
+
 export const deleteTransactionsSchema = {
   ids: z.array(z.number().int().positive()).min(1).max(100).describe("List of transaction IDs to delete.")
 };
