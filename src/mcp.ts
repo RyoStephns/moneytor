@@ -284,7 +284,7 @@ export function createMoneytorServer(): McpServer {
       description: "Set multiple budget groups at once for a pay period in a single atomic operation. Existing groups with the same name are updated; new names are inserted.",
       inputSchema: setBudgetGroupsBulkSchema,
     },
-    async (input) => jsonResult(await setBudgetGroupsBulk(input.pay_period_id, input.groups as GroupInput[]))
+    async (input) => jsonResult(await setBudgetGroupsBulk(input.pay_period_id, input.groups as GroupInput[], input.replace_all))
   );
 
   server.registerTool(

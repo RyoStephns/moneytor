@@ -140,6 +140,7 @@ export const setBudgetGroupSchema = {
 export const setBudgetGroupsBulkSchema = {
   pay_period_id: z.number().int(),
   groups: z.array(groupInputSchema),
+  replace_all: z.boolean().default(false).describe("If true, delete all existing groups for this pay period before inserting. Use this to fully replace the budget layout."),
 };
 
 export const getBudgetGroupsSchema = {

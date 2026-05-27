@@ -868,11 +868,15 @@ export async function listPayPeriods(limit = 6): Promise<PayPeriodWithDays[]> {
 
 export async function setBudgetGroupsBulk(
   pay_period_id: number,
-  groups: GroupInput[]
+  groups: GroupInput[],
+  replace_all = false
 ): Promise<{ group_ids: number[] }> {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    if (replace_all) {
+      await conn.execute(`DELETE FROM budget_groups WHERE pay_period_id = ?`, [pay_period_id]);
+    }
     const group_ids: number[] = [];
     for (const g of groups) group_ids.push(await upsertBudgetGroupInConn(conn, pay_period_id, g));
     await conn.commit();
