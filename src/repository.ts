@@ -649,3 +649,383 @@ function mapTransaction(row: MysqlTransactionRow): Transaction {
     updated_at: String(row.updated_at)
   };
 }
+
+// ─── Budget ───────────────────────────────────────────────────────────────────
+
+export type BudgetType = "spending" | "saving";
+export type PayPeriodStatus = "estimated" | "active" | "closed";
+
+export type PayPeriod = {
+  id: number;
+  period_start: string;
+  period_end: string | null;
+  salary_amount: number;
+  salary_txn_id: number | null;
+  status: PayPeriodStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PayPeriodWithDays = PayPeriod & {
+  days_elapsed: number;
+  days_total: number | null;
+  days_remaining: number | null;
+};
+
+export type BudgetGroup = {
+  id: number;
+  pay_period_id: number;
+  name: string;
+  amount: number;
+  budget_type: BudgetType;
+  categories: string[];
+};
+
+export type GroupInput = {
+  name: string;
+  amount: number;
+  budget_type?: BudgetType;
+  categories: string[];
+};
+
+export type BudgetTemplate = {
+  id: number;
+  name: string;
+  groups: GroupInput[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type InputTransaction = {
+  category: string;
+  amount: number;
+  type: "income" | "expense";
+  occurred_at: string;
+};
+
+function budgetComputeDays(
+  period_start: string,
+  period_end: string | null
+): { days_elapsed: number; days_total: number | null; days_remaining: number | null } {
+  const start = new Date(period_start + "T00:00:00");
+  const today = new Date(new Date().toISOString().split("T")[0] + "T00:00:00");
+  let days_elapsed = Math.max(1, Math.floor((today.getTime() - start.getTime()) / 86400000) + 1);
+
+  if (!period_end) return { days_elapsed, days_total: null, days_remaining: null };
+
+  const end = new Date(period_end + "T00:00:00");
+  const days_total = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+  const effective = Math.min(days_elapsed, days_total);
+  return { days_elapsed: effective, days_total, days_remaining: days_total - effective };
+}
+
+function mapPayPeriodRow(row: mysql.RowDataPacket): PayPeriod {
+  return {
+    id: Number(row.id),
+    period_start: toDateString(row.period_start),
+    period_end: row.period_end ? toDateString(row.period_end) : null,
+    salary_amount: Number(row.salary_amount),
+    salary_txn_id: row.salary_txn_id != null ? Number(row.salary_txn_id) : null,
+    status: row.status as PayPeriodStatus,
+    notes: row.notes as string | null,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+  };
+}
+
+async function upsertBudgetGroupInConn(
+  conn: mysql.PoolConnection,
+  pay_period_id: number,
+  group: GroupInput
+): Promise<number> {
+  await conn.execute(
+    `INSERT INTO budget_groups (pay_period_id, name, amount, budget_type)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE amount = VALUES(amount), budget_type = VALUES(budget_type), updated_at = NOW()`,
+    [pay_period_id, group.name, group.amount, group.budget_type ?? "spending"]
+  );
+
+  const [rows] = await conn.execute<mysql.RowDataPacket[]>(
+    `SELECT id FROM budget_groups WHERE pay_period_id = ? AND name = ? LIMIT 1`,
+    [pay_period_id, group.name]
+  );
+  if (rows.length === 0) throw new Error(`Budget group not found after upsert (pay_period_id=${pay_period_id}, name=${group.name})`);
+  const groupId = Number(rows[0].id);
+
+  await conn.execute(`DELETE FROM budget_group_categories WHERE budget_group_id = ?`, [groupId]);
+
+  if (group.categories.length > 0) {
+    const placeholders = group.categories.map(() => "(?, ?)").join(", ");
+    await conn.execute(
+      `INSERT INTO budget_group_categories (budget_group_id, category) VALUES ${placeholders}`,
+      group.categories.flatMap((cat) => [groupId, cat])
+    );
+  }
+
+  return groupId;
+}
+
+async function fetchBudgetGroupsWithCategories(pay_period_id: number): Promise<BudgetGroup[]> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT bg.id, bg.pay_period_id, bg.name, bg.amount, bg.budget_type, bgc.category
+     FROM budget_groups bg
+     LEFT JOIN budget_group_categories bgc ON bgc.budget_group_id = bg.id
+     WHERE bg.pay_period_id = ?
+     ORDER BY bg.id, bgc.category`,
+    [pay_period_id]
+  );
+
+  const map = new Map<number, BudgetGroup>();
+  for (const row of rows) {
+    const id = Number(row.id);
+    if (!map.has(id)) {
+      map.set(id, {
+        id,
+        pay_period_id: Number(row.pay_period_id),
+        name: String(row.name),
+        amount: Number(row.amount),
+        budget_type: row.budget_type as BudgetType,
+        categories: [],
+      });
+    }
+    if (row.category) map.get(id)!.categories.push(String(row.category));
+  }
+
+  return Array.from(map.values());
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function groupMetrics(
+  group: BudgetGroup,
+  expenseByCategory: Map<string, number>,
+  days_elapsed: number,
+  days_total: number | null
+) {
+  const actual_amount = round2(group.categories.reduce((s, c) => s + (expenseByCategory.get(c) ?? 0), 0));
+  const remaining = round2(group.amount - actual_amount);
+  const pct_used = round2(group.amount > 0 ? (actual_amount / group.amount) * 100 : 0);
+  const status: "ok" | "warning" | "over" = pct_used <= 80 ? "ok" : pct_used <= 100 ? "warning" : "over";
+  const burn_rate = round2(days_elapsed > 0 ? actual_amount / days_elapsed : 0);
+  const projected_total = days_total != null ? round2(burn_rate * days_total) : null;
+  const projected_status: "ok" | "warning" | "over" | null =
+    projected_total != null && group.amount > 0
+      ? (projected_total / group.amount) * 100 <= 80 ? "ok"
+        : (projected_total / group.amount) * 100 <= 100 ? "warning" : "over"
+      : null;
+  return { actual_amount, remaining, pct_used, status, burn_rate, projected_total, projected_status };
+}
+
+// Pay Period
+
+export async function createPayPeriod(input: {
+  period_start: string;
+  salary_amount: number;
+  salary_txn_id?: number;
+  notes?: string;
+}): Promise<PayPeriod> {
+  const [result] = await pool.execute<mysql.ResultSetHeader>(
+    `INSERT INTO pay_periods (period_start, salary_amount, salary_txn_id, notes) VALUES (?, ?, ?, ?)`,
+    [input.period_start, input.salary_amount, input.salary_txn_id ?? null, input.notes ?? null]
+  );
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? LIMIT 1`, [result.insertId]);
+  return mapPayPeriodRow(rows[0]);
+}
+
+export async function closePayPeriod(period_id: number, period_end: string): Promise<PayPeriod> {
+  await pool.execute(
+    `UPDATE pay_periods SET period_end = ?, status = 'closed', updated_at = NOW() WHERE id = ?`,
+    [period_end, period_id]
+  );
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? LIMIT 1`, [period_id]);
+  if (rows.length === 0) throw new Error(`Pay period ${period_id} not found`);
+  return mapPayPeriodRow(rows[0]);
+}
+
+export async function getCurrentPeriod(): Promise<PayPeriodWithDays | null> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT * FROM pay_periods WHERE status IN ('active','estimated') ORDER BY period_start DESC LIMIT 1`
+  );
+  if (rows.length === 0) return null;
+  const p = mapPayPeriodRow(rows[0]);
+  return { ...p, ...budgetComputeDays(p.period_start, p.period_end) };
+}
+
+export async function listPayPeriods(limit = 6): Promise<PayPeriodWithDays[]> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT * FROM pay_periods ORDER BY period_start DESC LIMIT ?`, [limit]
+  );
+  return rows.map((row) => {
+    const p = mapPayPeriodRow(row);
+    return { ...p, ...budgetComputeDays(p.period_start, p.period_end) };
+  });
+}
+
+// Budget Group
+
+export async function setBudgetGroupsBulk(
+  pay_period_id: number,
+  groups: GroupInput[]
+): Promise<{ group_ids: number[] }> {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const group_ids: number[] = [];
+    for (const g of groups) group_ids.push(await upsertBudgetGroupInConn(conn, pay_period_id, g));
+    await conn.commit();
+    return { group_ids };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function setBudgetGroup(pay_period_id: number, input: GroupInput): Promise<{ group_id: number }> {
+  const { group_ids } = await setBudgetGroupsBulk(pay_period_id, [input]);
+  return { group_id: group_ids[0] };
+}
+
+export async function getBudgetGroups(pay_period_id: number): Promise<BudgetGroup[]> {
+  return fetchBudgetGroupsWithCategories(pay_period_id);
+}
+
+export async function deleteBudgetGroup(group_id: number): Promise<{ deleted: number }> {
+  const [result] = await pool.execute<mysql.ResultSetHeader>(`DELETE FROM budget_groups WHERE id = ?`, [group_id]);
+  return { deleted: result.affectedRows };
+}
+
+// Budget Summary
+
+export async function getBudgetSummary(pay_period_id: number, transactions: InputTransaction[]) {
+  const [pRows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? LIMIT 1`, [pay_period_id]);
+  if (pRows.length === 0) throw new Error(`Pay period ${pay_period_id} not found`);
+  const period = mapPayPeriodRow(pRows[0]);
+
+  const groups = await fetchBudgetGroupsWithCategories(pay_period_id);
+  const { days_elapsed, days_total, days_remaining } = budgetComputeDays(period.period_start, period.period_end);
+
+  const allMapped = new Set(groups.flatMap((g) => g.categories));
+  const expenseByCategory = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.type === "expense") expenseByCategory.set(t.category, (expenseByCategory.get(t.category) ?? 0) + t.amount);
+  }
+
+  const groupResults = groups.map((g) => ({
+    group_id: g.id,
+    name: g.name,
+    budget_type: g.budget_type,
+    categories: g.categories,
+    budget_amount: g.amount,
+    ...groupMetrics(g, expenseByCategory, days_elapsed, days_total),
+  }));
+
+  const unbudgetedMap = new Map<string, number>();
+  for (const [cat, amt] of expenseByCategory) {
+    if (!allMapped.has(cat)) unbudgetedMap.set(cat, amt);
+  }
+  const unbudgeted_total = round2(Array.from(unbudgetedMap.values()).reduce((s, v) => s + v, 0));
+  const total_actual = round2(Array.from(expenseByCategory.values()).reduce((s, v) => s + v, 0));
+
+  return {
+    period_info: {
+      period_start: period.period_start,
+      period_end: period.period_end,
+      days_elapsed,
+      days_total,
+      days_remaining,
+      salary_amount: period.salary_amount,
+      total_budget_spending: round2(groups.filter((g) => g.budget_type === "spending").reduce((s, g) => s + g.amount, 0)),
+      total_budget_saving: round2(groups.filter((g) => g.budget_type === "saving").reduce((s, g) => s + g.amount, 0)),
+      total_actual,
+      total_remaining: round2(groups.filter((g) => g.budget_type === "spending").reduce((s, g) => s + g.amount, 0) - total_actual),
+    },
+    groups: groupResults,
+    unbudgeted: {
+      categories: Array.from(unbudgetedMap.entries()).map(([category, amount]) => ({ category, amount: round2(amount) })),
+      total_amount: unbudgeted_total,
+    },
+  };
+}
+
+export async function getGroupDetail(pay_period_id: number, budget_group_id: number, transactions: InputTransaction[]) {
+  const groups = await fetchBudgetGroupsWithCategories(pay_period_id);
+  const group = groups.find((g) => g.id === budget_group_id);
+  if (!group) throw new Error(`Budget group ${budget_group_id} not found in period ${pay_period_id}`);
+
+  const txns = transactions.filter((t) => t.type === "expense" && group.categories.includes(t.category));
+  const actual_amount = round2(txns.reduce((s, t) => s + t.amount, 0));
+  const remaining = round2(group.amount - actual_amount);
+  const pct_used = round2(group.amount > 0 ? (actual_amount / group.amount) * 100 : 0);
+
+  return {
+    group: {
+      id: group.id,
+      name: group.name,
+      budget_type: group.budget_type,
+      categories: group.categories,
+      budget_amount: group.amount,
+      actual_amount,
+      remaining,
+      pct_used,
+      status: pct_used <= 80 ? "ok" : pct_used <= 100 ? "warning" : "over",
+    },
+    transactions: txns,
+  };
+}
+
+// Template
+
+export async function saveBudgetTemplate(name: string, groups: GroupInput[]): Promise<BudgetTemplate> {
+  await pool.execute(
+    `INSERT INTO budget_templates (name, groups) VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE groups = VALUES(groups), updated_at = NOW()`,
+    [name, JSON.stringify(groups)]
+  );
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE name = ? LIMIT 1`, [name]);
+  return mapTemplateRow(rows[0]);
+}
+
+export async function listBudgetTemplates(): Promise<BudgetTemplate[]> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates ORDER BY name`);
+  return rows.map(mapTemplateRow);
+}
+
+export async function applyBudgetTemplate(pay_period_id: number, template_id: number): Promise<{ applied: number }> {
+  const [tRows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE id = ? LIMIT 1`, [template_id]);
+  if (tRows.length === 0) throw new Error(`Template ${template_id} not found`);
+
+  const groups: GroupInput[] = typeof tRows[0].groups === "string"
+    ? JSON.parse(tRows[0].groups) as GroupInput[]
+    : tRows[0].groups as GroupInput[];
+
+  if (groups.length === 0) throw new Error(`Template ${template_id} has no groups — refusing to wipe pay period`);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute(`DELETE FROM budget_groups WHERE pay_period_id = ?`, [pay_period_id]);
+    for (const g of groups) await upsertBudgetGroupInConn(conn, pay_period_id, g);
+    await conn.commit();
+    return { applied: groups.length };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+function mapTemplateRow(row: mysql.RowDataPacket): BudgetTemplate {
+  return {
+    id: Number(row.id),
+    name: String(row.name),
+    groups: typeof row.groups === "string" ? JSON.parse(row.groups) as GroupInput[] : row.groups as GroupInput[],
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+  };
+}

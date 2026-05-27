@@ -96,3 +96,81 @@ export const deleteRecurringSchema = {
 export const addCategorySchema = {
   name: z.string().min(1).max(120).describe("Category name to register.")
 };
+
+// ─── Budget ───────────────────────────────────────────────────────────────────
+
+const groupInputSchema = z.object({
+  name: z.string(),
+  amount: z.number().positive(),
+  budget_type: z.enum(["spending", "saving"]).optional(),
+  categories: z.array(z.string()),
+});
+
+const inputTransactionSchema = z.object({
+  category: z.string(),
+  amount: z.number().nonnegative(),
+  type: z.enum(["income", "expense"]),
+  occurred_at: z.string(),
+});
+
+export const createPayPeriodSchema = {
+  period_start: z.string().describe("Date the salary arrived (YYYY-MM-DD)."),
+  salary_amount: z.number().positive(),
+  salary_txn_id: z.number().int().optional().describe("Moneytor transaction ID of the salary entry."),
+  notes: z.string().optional(),
+};
+
+export const closePayPeriodSchema = {
+  period_id: z.number().int(),
+  period_end: z.string().describe("Last day of the period (YYYY-MM-DD), typically the day before the new period_start."),
+};
+
+export const listPayPeriodsSchema = {
+  limit: z.number().int().min(1).max(24).default(6),
+};
+
+export const setBudgetGroupSchema = {
+  pay_period_id: z.number().int(),
+  name: z.string(),
+  amount: z.number().positive(),
+  budget_type: z.enum(["spending", "saving"]).optional(),
+  categories: z.array(z.string()).describe("Moneytor category names mapped to this group. Pass [] for saving groups."),
+};
+
+export const setBudgetGroupsBulkSchema = {
+  pay_period_id: z.number().int(),
+  groups: z.array(groupInputSchema),
+};
+
+export const getBudgetGroupsSchema = {
+  pay_period_id: z.number().int(),
+};
+
+export const deleteBudgetGroupSchema = {
+  budget_group_id: z.number().int(),
+};
+
+export const getBudgetSummarySchema = {
+  pay_period_id: z.number().int(),
+  transactions: z.array(inputTransactionSchema).describe(
+    "Transactions from list_transactions for this pay period. Fetch with start_date=period_start."
+  ),
+};
+
+export const getGroupDetailSchema = {
+  pay_period_id: z.number().int(),
+  budget_group_id: z.number().int(),
+  transactions: z.array(inputTransactionSchema).describe(
+    "Full period transactions — same array as get_budget_summary. The tool filters internally."
+  ),
+};
+
+export const saveBudgetTemplateSchema = {
+  name: z.string().describe("Template name. Calling with the same name overwrites the existing template."),
+  groups: z.array(groupInputSchema),
+};
+
+export const applyBudgetTemplateSchema = {
+  pay_period_id: z.number().int(),
+  template_id: z.number().int(),
+};

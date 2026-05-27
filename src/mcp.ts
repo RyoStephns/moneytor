@@ -13,7 +13,22 @@ import {
   listTransactions,
   processRecurring,
   registerRecurring,
-  updateTransaction
+  updateTransaction,
+  createPayPeriod,
+  closePayPeriod,
+  getCurrentPeriod,
+  listPayPeriods,
+  setBudgetGroup,
+  setBudgetGroupsBulk,
+  getBudgetGroups,
+  deleteBudgetGroup,
+  getBudgetSummary,
+  getGroupDetail,
+  saveBudgetTemplate,
+  listBudgetTemplates,
+  applyBudgetTemplate,
+  type GroupInput,
+  type InputTransaction,
 } from "./repository.js";
 import {
   addCategorySchema,
@@ -27,7 +42,18 @@ import {
   registerRecurringSchema,
   summarySchema,
   totalBalanceSchema,
-  updateTransactionSchema
+  updateTransactionSchema,
+  createPayPeriodSchema,
+  closePayPeriodSchema,
+  listPayPeriodsSchema,
+  setBudgetGroupSchema,
+  setBudgetGroupsBulkSchema,
+  getBudgetGroupsSchema,
+  deleteBudgetGroupSchema,
+  getBudgetSummarySchema,
+  getGroupDetailSchema,
+  saveBudgetTemplateSchema,
+  applyBudgetTemplateSchema,
 } from "./schemas.js";
 
 function jsonResult(value: unknown) {
@@ -192,6 +218,152 @@ export function createMoneytorServer(): McpServer {
       inputSchema: {}
     },
     async () => jsonResult(await processRecurring())
+  );
+
+  // ── Budget ──────────────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "create_pay_period",
+    {
+      title: "Create pay period",
+      description: "Create a new pay period when salary arrives. Close the previous period first with close_pay_period.",
+      inputSchema: createPayPeriodSchema,
+    },
+    async (input) => jsonResult(await createPayPeriod(input))
+  );
+
+  server.registerTool(
+    "close_pay_period",
+    {
+      title: "Close pay period",
+      description: "Close the current pay period by setting its end date. Typically period_end = new period_start minus 1 day.",
+      inputSchema: closePayPeriodSchema,
+    },
+    async (input) => jsonResult(await closePayPeriod(input.period_id, input.period_end))
+  );
+
+  server.registerTool(
+    "get_current_period",
+    {
+      title: "Get current pay period",
+      description: "Return the active pay period with elapsed/remaining day counts. Use this to get pay_period_id and period_start for other budget tools.",
+      inputSchema: {},
+    },
+    async () => jsonResult(await getCurrentPeriod())
+  );
+
+  server.registerTool(
+    "list_pay_periods",
+    {
+      title: "List pay periods",
+      description: "List recent pay periods newest first. Default limit 6.",
+      inputSchema: listPayPeriodsSchema,
+    },
+    async (input) => jsonResult(await listPayPeriods(input.limit))
+  );
+
+  server.registerTool(
+    "set_budget_group",
+    {
+      title: "Set budget group",
+      description: "Create or update a single budget group and its Moneytor category mappings for a pay period. Same name = update amount and replace categories.",
+      inputSchema: setBudgetGroupSchema,
+    },
+    async (input) => jsonResult(await setBudgetGroup(input.pay_period_id, {
+      name: input.name,
+      amount: input.amount,
+      budget_type: input.budget_type,
+      categories: input.categories,
+    }))
+  );
+
+  server.registerTool(
+    "set_budget_groups_bulk",
+    {
+      title: "Set budget groups (bulk)",
+      description: "Set multiple budget groups at once for a pay period in a single atomic operation. Existing groups with the same name are updated; new names are inserted.",
+      inputSchema: setBudgetGroupsBulkSchema,
+    },
+    async (input) => jsonResult(await setBudgetGroupsBulk(input.pay_period_id, input.groups as GroupInput[]))
+  );
+
+  server.registerTool(
+    "get_budget_groups",
+    {
+      title: "Get budget groups",
+      description: "Return all budget groups and their Moneytor category mappings for a pay period.",
+      inputSchema: getBudgetGroupsSchema,
+    },
+    async (input) => jsonResult(await getBudgetGroups(input.pay_period_id))
+  );
+
+  server.registerTool(
+    "delete_budget_group",
+    {
+      title: "Delete budget group",
+      description: "Delete a budget group and its category mappings.",
+      inputSchema: deleteBudgetGroupSchema,
+      annotations: { destructiveHint: true },
+    },
+    async (input) => jsonResult(await deleteBudgetGroup(input.budget_group_id))
+  );
+
+  server.registerTool(
+    "get_budget_summary",
+    {
+      title: "Get budget summary",
+      description: `Core budget tool. Receives transactions from Moneytor, joins with budget groups, and returns per-group actual vs budget with burn rate and end-of-period projections.
+
+Workflow:
+1. get_current_period → period_start, pay_period_id
+2. list_transactions with start_date=period_start
+3. get_budget_summary with pay_period_id + transactions from step 2
+
+Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
+      inputSchema: getBudgetSummarySchema,
+    },
+    async (input) => jsonResult(await getBudgetSummary(input.pay_period_id, input.transactions as InputTransaction[]))
+  );
+
+  server.registerTool(
+    "get_group_detail",
+    {
+      title: "Get budget group detail",
+      description: "Drill into a single budget group — returns budget vs actual plus the individual transactions that belong to it.",
+      inputSchema: getGroupDetailSchema,
+    },
+    async (input) => jsonResult(await getGroupDetail(input.pay_period_id, input.budget_group_id, input.transactions as InputTransaction[]))
+  );
+
+  server.registerTool(
+    "save_budget_template",
+    {
+      title: "Save budget template",
+      description: "Save current budget group configuration as a reusable template. Same name overwrites the existing template.",
+      inputSchema: saveBudgetTemplateSchema,
+    },
+    async (input) => jsonResult(await saveBudgetTemplate(input.name, input.groups as GroupInput[]))
+  );
+
+  server.registerTool(
+    "list_budget_templates",
+    {
+      title: "List budget templates",
+      description: "List all saved budget templates.",
+      inputSchema: {},
+    },
+    async () => jsonResult(await listBudgetTemplates())
+  );
+
+  server.registerTool(
+    "apply_budget_template",
+    {
+      title: "Apply budget template",
+      description: "Apply a saved template to a pay period. Replaces all existing budget groups for that period with the template's groups.",
+      inputSchema: applyBudgetTemplateSchema,
+      annotations: { destructiveHint: true },
+    },
+    async (input) => jsonResult(await applyBudgetTemplate(input.pay_period_id, input.template_id))
   );
 
   return server;
