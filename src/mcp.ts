@@ -27,6 +27,7 @@ import {
   saveBudgetTemplate,
   listBudgetTemplates,
   applyBudgetTemplate,
+  deleteBudgetTemplate,
   type GroupInput,
   type InputTransaction,
 } from "./repository.js";
@@ -54,6 +55,7 @@ import {
   getGroupDetailSchema,
   saveBudgetTemplateSchema,
   applyBudgetTemplateSchema,
+  deleteBudgetTemplateSchema,
 } from "./schemas.js";
 
 function jsonResult(value: unknown) {
@@ -364,6 +366,17 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       annotations: { destructiveHint: true },
     },
     async (input) => jsonResult(await applyBudgetTemplate(input.pay_period_id, input.template_id))
+  );
+
+  server.registerTool(
+    "delete_budget_template",
+    {
+      title: "Delete budget template",
+      description: "Delete a saved budget template by id. Does not affect pay periods the template was already applied to.",
+      inputSchema: deleteBudgetTemplateSchema,
+      annotations: { destructiveHint: true },
+    },
+    async (input) => jsonResult(await deleteBudgetTemplate(input.template_id))
   );
 
   return server;

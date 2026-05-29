@@ -999,6 +999,11 @@ export async function listBudgetTemplates(): Promise<BudgetTemplate[]> {
   return rows.map(mapTemplateRow);
 }
 
+export async function deleteBudgetTemplate(template_id: number): Promise<{ deleted: number }> {
+  const [result] = await pool.execute<mysql.ResultSetHeader>(`DELETE FROM budget_templates WHERE id = ?`, [template_id]);
+  return { deleted: result.affectedRows };
+}
+
 export async function applyBudgetTemplate(pay_period_id: number, template_id: number): Promise<{ applied: number }> {
   const [tRows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE id = ? LIMIT 1`, [template_id]);
   if (tRows.length === 0) throw new Error(`Template ${template_id} not found`);

@@ -175,3 +175,7 @@ export const applyBudgetTemplateSchema = {
   pay_period_id: z.number().int(),
   template_id: z.number().int(),
 };
+
+export const deleteBudgetTemplateSchema = {
+  template_id: z.number().int(),
+};
