@@ -71,28 +71,6 @@ export const averagesSchema = {
   period: z.enum(["day", "month"]).default("month").describe("Granularity: day or month.")
 };
 
-export const registerRecurringSchema = {
-  type: transactionTypeSchema.describe("Transaction type: income or expense."),
-  amount: z.number().positive().describe("Fixed amount recorded each occurrence."),
-  category: z.string().min(1).max(120),
-  description: z.string().max(500).optional(),
-  account: z.string().max(120).optional(),
-  tags: z.array(z.string().min(1).max(60)).max(20).optional(),
-  source: z.string().max(120).optional(),
-  notes: z.string().max(2000).optional(),
-  interval_months: z.number().int().min(1).max(12).default(1).describe("Repeat every N months."),
-  day_of_month: z.number().int().min(1).max(28).describe("Day of month to record (1–28)."),
-  start_date: z.string().optional().describe("First due date as YYYY-MM-DD. Defaults to next occurrence based on day_of_month.")
-};
-
-export const listRecurringSchema = {
-  include_inactive: z.boolean().default(false).describe("Include deactivated recurring entries.")
-};
-
-export const deleteRecurringSchema = {
-  id: z.number().int().positive()
-};
-
 export const addCategorySchema = {
   name: z.string().min(1).max(120).describe("Category name to register.")
 };

@@ -4,15 +4,11 @@ import {
   addTransaction,
   deleteTransaction,
   deleteTransactions,
-  deleteRecurring,
   getAverages,
   getFinanceSummary,
   getTotalBalance,
   listCategories,
-  listRecurring,
   listTransactions,
-  processRecurring,
-  registerRecurring,
   updateTransaction,
   createPayPeriod,
   closePayPeriod,
@@ -35,12 +31,9 @@ import {
   addCategorySchema,
   addTransactionSchema,
   averagesSchema,
-  deleteRecurringSchema,
   deleteTransactionSchema,
   deleteTransactionsSchema,
-  listRecurringSchema,
   listTransactionsSchema,
-  registerRecurringSchema,
   summarySchema,
   totalBalanceSchema,
   updateTransactionSchema,
@@ -177,49 +170,6 @@ export function createMoneytorServer(): McpServer {
       inputSchema: averagesSchema
     },
     async (input) => jsonResult(await getAverages(input))
-  );
-
-  server.registerTool(
-    "register_recurring",
-    {
-      title: "Register recurring transaction",
-      description: "Register a fixed recurring income or expense that repeats every N months on a specific day. Call process_recurring to generate due transactions.",
-      inputSchema: registerRecurringSchema
-    },
-    async (input) => jsonResult(await registerRecurring(input))
-  );
-
-  server.registerTool(
-    "list_recurring",
-    {
-      title: "List recurring transactions",
-      description: "List all registered recurring transaction templates.",
-      inputSchema: listRecurringSchema
-    },
-    async (input) => jsonResult(await listRecurring(input.include_inactive))
-  );
-
-  server.registerTool(
-    "delete_recurring",
-    {
-      title: "Delete recurring transaction",
-      description: "Remove a recurring transaction template by id. Does not affect already-created transactions.",
-      inputSchema: deleteRecurringSchema,
-      annotations: {
-        destructiveHint: true
-      }
-    },
-    async (input) => jsonResult(await deleteRecurring(input.id))
-  );
-
-  server.registerTool(
-    "process_recurring",
-    {
-      title: "Process recurring transactions",
-      description: "Create actual transactions for all recurring templates that are due today or overdue. Returns the list of created transactions.",
-      inputSchema: {}
-    },
-    async () => jsonResult(await processRecurring())
   );
 
   // ── Budget ──────────────────────────────────────────────────────────────────
