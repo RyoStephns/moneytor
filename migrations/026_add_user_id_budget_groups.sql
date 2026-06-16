@@ -1,0 +1,1 @@
+ALTER TABLE budget_groups ADD COLUMN user_id BIGINT UNSIGNED NULL

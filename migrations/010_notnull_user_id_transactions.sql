@@ -1,0 +1,1 @@
+ALTER TABLE transactions MODIFY user_id BIGINT UNSIGNED NOT NULL

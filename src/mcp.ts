@@ -62,7 +62,7 @@ function jsonResult(value: unknown) {
   };
 }
 
-export function createMoneytorServer(): McpServer {
+export function createMoneytorServer(userId: number): McpServer {
   const server = new McpServer({
     name: "moneytor",
     version: "0.1.0"
@@ -75,7 +75,7 @@ export function createMoneytorServer(): McpServer {
       description: "List all registered transaction categories. Always call this before add_transaction to pick a valid category.",
       inputSchema: {}
     },
-    async () => jsonResult(await listCategories())
+    async () => jsonResult(await listCategories(userId))
   );
 
   server.registerTool(
@@ -85,7 +85,7 @@ export function createMoneytorServer(): McpServer {
       description: "Register a new transaction category. Required before using a category that doesn't exist yet.",
       inputSchema: addCategorySchema
     },
-    async (input) => jsonResult(await addCategory(input.name))
+    async (input) => jsonResult(await addCategory(userId, input.name))
   );
 
   server.registerTool(
@@ -95,7 +95,7 @@ export function createMoneytorServer(): McpServer {
       description: "Record one personal finance income or expense transaction. The category field must match an existing category from list_categories. Use add_category first if needed.",
       inputSchema: addTransactionSchema
     },
-    async (input) => jsonResult(await addTransaction(input))
+    async (input) => jsonResult(await addTransaction(userId, input))
   );
 
   server.registerTool(
@@ -105,7 +105,7 @@ export function createMoneytorServer(): McpServer {
       description: "Fetch and filter personal finance transactions. Supports date range, type, category, account, tag filters, and free-text keyword search across description and notes.",
       inputSchema: listTransactionsSchema
     },
-    async (input) => jsonResult(await listTransactions(input))
+    async (input) => jsonResult(await listTransactions(userId, input))
   );
 
   server.registerTool(
@@ -115,7 +115,7 @@ export function createMoneytorServer(): McpServer {
       description: "Summarize income, expenses, net cashflow, and breakdowns over a date range.",
       inputSchema: summarySchema
     },
-    async (input) => jsonResult(await getFinanceSummary(input))
+    async (input) => jsonResult(await getFinanceSummary(userId, input))
   );
 
   server.registerTool(
@@ -125,7 +125,7 @@ export function createMoneytorServer(): McpServer {
       description: "Edit one or more fields of an existing transaction (amount, type, category, description, date, account, tags, notes). Only supply the fields you want to change — omitted fields are left as-is.",
       inputSchema: updateTransactionSchema
     },
-    async (input) => jsonResult(await updateTransaction(input))
+    async (input) => jsonResult(await updateTransaction(userId, input))
   );
 
   server.registerTool(
@@ -136,7 +136,7 @@ export function createMoneytorServer(): McpServer {
       inputSchema: deleteTransactionSchema,
       annotations: { destructiveHint: true }
     },
-    async (input) => jsonResult(await deleteTransaction(input.id))
+    async (input) => jsonResult(await deleteTransaction(userId, input.id))
   );
 
   server.registerTool(
@@ -149,7 +149,7 @@ export function createMoneytorServer(): McpServer {
         destructiveHint: true
       }
     },
-    async (input) => jsonResult(await deleteTransactions(input.ids))
+    async (input) => jsonResult(await deleteTransactions(userId, input.ids))
   );
 
   server.registerTool(
@@ -159,7 +159,7 @@ export function createMoneytorServer(): McpServer {
       description: "Calculate net balance (total income minus total expense). Optionally filter by account or date range.",
       inputSchema: totalBalanceSchema
     },
-    async (input) => jsonResult(await getTotalBalance(input))
+    async (input) => jsonResult(await getTotalBalance(userId, input))
   );
 
   server.registerTool(
@@ -169,7 +169,7 @@ export function createMoneytorServer(): McpServer {
       description: "Calculate average income and average expense per day or month over a date range.",
       inputSchema: averagesSchema
     },
-    async (input) => jsonResult(await getAverages(input))
+    async (input) => jsonResult(await getAverages(userId, input))
   );
 
   // ── Budget ──────────────────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ export function createMoneytorServer(): McpServer {
       description: "Create a new pay period when salary arrives. Close the previous period first with close_pay_period.",
       inputSchema: createPayPeriodSchema,
     },
-    async (input) => jsonResult(await createPayPeriod(input))
+    async (input) => jsonResult(await createPayPeriod(userId, input))
   );
 
   server.registerTool(
@@ -191,7 +191,7 @@ export function createMoneytorServer(): McpServer {
       description: "Close the current pay period by setting its end date. Typically period_end = new period_start minus 1 day.",
       inputSchema: closePayPeriodSchema,
     },
-    async (input) => jsonResult(await closePayPeriod(input.period_id, input.period_end))
+    async (input) => jsonResult(await closePayPeriod(userId, input.period_id, input.period_end))
   );
 
   server.registerTool(
@@ -201,7 +201,7 @@ export function createMoneytorServer(): McpServer {
       description: "Return the active pay period with elapsed/remaining day counts. Use this to get pay_period_id and period_start for other budget tools.",
       inputSchema: {},
     },
-    async () => jsonResult(await getCurrentPeriod())
+    async () => jsonResult(await getCurrentPeriod(userId))
   );
 
   server.registerTool(
@@ -211,7 +211,7 @@ export function createMoneytorServer(): McpServer {
       description: "List recent pay periods newest first. Default limit 6.",
       inputSchema: listPayPeriodsSchema,
     },
-    async (input) => jsonResult(await listPayPeriods(input.limit))
+    async (input) => jsonResult(await listPayPeriods(userId, input.limit))
   );
 
   server.registerTool(
@@ -221,7 +221,7 @@ export function createMoneytorServer(): McpServer {
       description: "Create or update a single budget group and its Moneytor category mappings for a pay period. Same name = update amount and replace categories.",
       inputSchema: setBudgetGroupSchema,
     },
-    async (input) => jsonResult(await setBudgetGroup(input.pay_period_id, {
+    async (input) => jsonResult(await setBudgetGroup(userId, input.pay_period_id, {
       name: input.name,
       amount: input.amount,
       budget_type: input.budget_type,
@@ -236,7 +236,7 @@ export function createMoneytorServer(): McpServer {
       description: "Set multiple budget groups at once for a pay period in a single atomic operation. Existing groups with the same name are updated; new names are inserted.",
       inputSchema: setBudgetGroupsBulkSchema,
     },
-    async (input) => jsonResult(await setBudgetGroupsBulk(input.pay_period_id, input.groups as GroupInput[], input.replace_all))
+    async (input) => jsonResult(await setBudgetGroupsBulk(userId, input.pay_period_id, input.groups as GroupInput[], input.replace_all))
   );
 
   server.registerTool(
@@ -246,7 +246,7 @@ export function createMoneytorServer(): McpServer {
       description: "Return all budget groups and their Moneytor category mappings for a pay period.",
       inputSchema: getBudgetGroupsSchema,
     },
-    async (input) => jsonResult(await getBudgetGroups(input.pay_period_id))
+    async (input) => jsonResult(await getBudgetGroups(userId, input.pay_period_id))
   );
 
   server.registerTool(
@@ -257,7 +257,7 @@ export function createMoneytorServer(): McpServer {
       inputSchema: deleteBudgetGroupSchema,
       annotations: { destructiveHint: true },
     },
-    async (input) => jsonResult(await deleteBudgetGroup(input.budget_group_id))
+    async (input) => jsonResult(await deleteBudgetGroup(userId, input.budget_group_id))
   );
 
   server.registerTool(
@@ -274,7 +274,7 @@ Workflow:
 Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       inputSchema: getBudgetSummarySchema,
     },
-    async (input) => jsonResult(await getBudgetSummary(input.pay_period_id, input.transactions as InputTransaction[]))
+    async (input) => jsonResult(await getBudgetSummary(userId, input.pay_period_id, input.transactions as InputTransaction[]))
   );
 
   server.registerTool(
@@ -284,7 +284,7 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       description: "Drill into a single budget group — returns budget vs actual plus the individual transactions that belong to it.",
       inputSchema: getGroupDetailSchema,
     },
-    async (input) => jsonResult(await getGroupDetail(input.pay_period_id, input.budget_group_id, input.transactions as InputTransaction[]))
+    async (input) => jsonResult(await getGroupDetail(userId, input.pay_period_id, input.budget_group_id, input.transactions as InputTransaction[]))
   );
 
   server.registerTool(
@@ -294,7 +294,7 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       description: "Save current budget group configuration as a reusable template. Same name overwrites the existing template.",
       inputSchema: saveBudgetTemplateSchema,
     },
-    async (input) => jsonResult(await saveBudgetTemplate(input.name, input.groups as GroupInput[]))
+    async (input) => jsonResult(await saveBudgetTemplate(userId, input.name, input.groups as GroupInput[]))
   );
 
   server.registerTool(
@@ -304,7 +304,7 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       description: "List all saved budget templates.",
       inputSchema: {},
     },
-    async () => jsonResult(await listBudgetTemplates())
+    async () => jsonResult(await listBudgetTemplates(userId))
   );
 
   server.registerTool(
@@ -315,7 +315,7 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       inputSchema: applyBudgetTemplateSchema,
       annotations: { destructiveHint: true },
     },
-    async (input) => jsonResult(await applyBudgetTemplate(input.pay_period_id, input.template_id))
+    async (input) => jsonResult(await applyBudgetTemplate(userId, input.pay_period_id, input.template_id))
   );
 
   server.registerTool(
@@ -326,7 +326,7 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       inputSchema: deleteBudgetTemplateSchema,
       annotations: { destructiveHint: true },
     },
-    async (input) => jsonResult(await deleteBudgetTemplate(input.template_id))
+    async (input) => jsonResult(await deleteBudgetTemplate(userId, input.template_id))
   );
 
   return server;

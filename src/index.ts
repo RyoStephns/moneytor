@@ -19,8 +19,13 @@ app.get("/health", (_request, response) => {
   response.json({ ok: true, service: "moneytor-mcp" });
 });
 
+// Phase 1: the secret-slug path maps to the owner (users.id = 1). Real
+// per-user binding from an OAuth bearer token arrives in Phase 4, which will
+// resolve userId from req.auth instead of this constant.
+const OWNER_USER_ID = 1;
+
 app.all(mcpPath, async (request, response) => {
-  const server = createMoneytorServer();
+  const server = createMoneytorServer(OWNER_USER_ID);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true

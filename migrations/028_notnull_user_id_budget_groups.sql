@@ -1,0 +1,1 @@
+ALTER TABLE budget_groups MODIFY user_id BIGINT UNSIGNED NOT NULL

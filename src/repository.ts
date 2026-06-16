@@ -90,32 +90,34 @@ export async function closePool(): Promise<void> {
   await pool.end();
 }
 
-export async function listCategories(): Promise<string[]> {
+export async function listCategories(userId: number): Promise<string[]> {
   const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-    `SELECT name FROM categories ORDER BY name ASC`
+    `SELECT name FROM categories WHERE user_id = ? ORDER BY name ASC`,
+    [userId]
   );
   return rows.map((r) => String(r.name));
 }
 
-export async function addCategory(name: string): Promise<{ name: string }> {
+export async function addCategory(userId: number, name: string): Promise<{ name: string }> {
   const trimmed = name.trim();
   await pool.execute<mysql.ResultSetHeader>(
-    `INSERT IGNORE INTO categories (name) VALUES (?)`,
-    [trimmed]
+    `INSERT IGNORE INTO categories (user_id, name) VALUES (?, ?)`,
+    [userId, trimmed]
   );
   return { name: trimmed };
 }
 
-export async function addTransaction(input: AddTransactionInput): Promise<Transaction> {
+export async function addTransaction(userId: number, input: AddTransactionInput): Promise<Transaction> {
   const occurredAt = parseInputDate(input.date);
   const tags = normalizeTags(input.tags);
 
   const [catRows] = await pool.execute<mysql.RowDataPacket[]>(
-    `SELECT name FROM categories WHERE name = ? LIMIT 1`,
-    [input.category]
+    `SELECT name FROM categories WHERE user_id = ? AND name = ? LIMIT 1`,
+    [userId, input.category]
   );
   const [countRows] = await pool.execute<mysql.RowDataPacket[]>(
-    `SELECT COUNT(*) AS total FROM categories`
+    `SELECT COUNT(*) AS total FROM categories WHERE user_id = ?`,
+    [userId]
   );
   const total = Number(countRows[0]?.total ?? 0);
   if (total > 0 && catRows.length === 0) {
@@ -127,10 +129,11 @@ export async function addTransaction(input: AddTransactionInput): Promise<Transa
   const [result] = await pool.execute<mysql.ResultSetHeader>(
     `
       INSERT INTO transactions
-        (type, amount, currency, category, description, occurred_at, account, tags_json, source, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, type, amount, currency, category, description, occurred_at, account, tags_json, source, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
+      userId,
       input.type,
       input.amount,
       config.defaultCurrency,
@@ -144,19 +147,19 @@ export async function addTransaction(input: AddTransactionInput): Promise<Transa
     ]
   );
 
-  return getTransaction(result.insertId);
+  return getTransaction(userId, result.insertId);
 }
 
-export async function getTransaction(id: number): Promise<Transaction> {
+export async function getTransaction(userId: number, id: number): Promise<Transaction> {
   const [rows] = await pool.execute<MysqlTransactionRow[]>(
     `
       SELECT id, type, amount, currency, category, description, occurred_at, account,
         tags_json, source, notes, created_at, updated_at
       FROM transactions
-      WHERE id = ?
+      WHERE id = ? AND user_id = ?
       LIMIT 1
     `,
-    [id]
+    [id, userId]
   );
 
   if (!rows[0]) {
@@ -166,8 +169,8 @@ export async function getTransaction(id: number): Promise<Transaction> {
   return mapTransaction(rows[0]);
 }
 
-export async function listTransactions(filters: TransactionFilters): Promise<Transaction[]> {
-  const { whereSql, params } = buildWhere(filters);
+export async function listTransactions(userId: number, filters: TransactionFilters): Promise<Transaction[]> {
+  const { whereSql, params } = buildWhere(userId, filters);
   const limit = filters.limit ?? 100;
   const offset = filters.offset ?? 0;
 
@@ -186,7 +189,7 @@ export async function listTransactions(filters: TransactionFilters): Promise<Tra
   return rows.map(mapTransaction);
 }
 
-export async function updateTransaction(input: UpdateTransactionInput): Promise<Transaction> {
+export async function updateTransaction(userId: number, input: UpdateTransactionInput): Promise<Transaction> {
   const updates: string[] = [];
   const params: SqlParam[] = [];
 
@@ -205,15 +208,16 @@ export async function updateTransaction(input: UpdateTransactionInput): Promise<
   }
 
   if (updates.length === 0) {
-    return getTransaction(input.id);
+    return getTransaction(userId, input.id);
   }
 
   updates.push("updated_at = ?");
   params.push(nowForMysql());
   params.push(input.id);
+  params.push(userId);
 
   const [result] = await pool.execute<mysql.ResultSetHeader>(
-    `UPDATE transactions SET ${updates.join(", ")} WHERE id = ?`,
+    `UPDATE transactions SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`,
     params
   );
 
@@ -221,25 +225,25 @@ export async function updateTransaction(input: UpdateTransactionInput): Promise<
     throw new Error(`Transaction not found: ${input.id}`);
   }
 
-  return getTransaction(input.id);
+  return getTransaction(userId, input.id);
 }
 
-export async function deleteTransaction(id: number): Promise<{ deleted: boolean; id: number }> {
-  const [result] = await pool.execute<mysql.ResultSetHeader>("DELETE FROM transactions WHERE id = ?", [id]);
+export async function deleteTransaction(userId: number, id: number): Promise<{ deleted: boolean; id: number }> {
+  const [result] = await pool.execute<mysql.ResultSetHeader>("DELETE FROM transactions WHERE id = ? AND user_id = ?", [id, userId]);
   return { deleted: result.affectedRows > 0, id };
 }
 
-export async function deleteTransactions(ids: number[]): Promise<{ deleted: number; ids: number[] }> {
+export async function deleteTransactions(userId: number, ids: number[]): Promise<{ deleted: number; ids: number[] }> {
   const placeholders = ids.map(() => "?").join(", ");
   const [result] = await pool.execute<mysql.ResultSetHeader>(
-    `DELETE FROM transactions WHERE id IN (${placeholders})`,
-    ids
+    `DELETE FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`,
+    [...ids, userId]
   );
   return { deleted: result.affectedRows, ids };
 }
 
-export async function getFinanceSummary(filters: SummaryFilters) {
-  const { whereSql, params } = buildWhere(filters);
+export async function getFinanceSummary(userId: number, filters: SummaryFilters) {
+  const { whereSql, params } = buildWhere(userId, filters);
   const periodFormat = filters.period === "day" ? "%Y-%m-%d" : "%Y-%m";
 
   const [totals] = await pool.execute<mysql.RowDataPacket[]>(
@@ -310,8 +314,8 @@ export async function getFinanceSummary(filters: SummaryFilters) {
   };
 }
 
-export async function getTotalBalance(filters: BalanceFilters) {
-  const { whereSql, params } = buildWhere(filters as TransactionFilters);
+export async function getTotalBalance(userId: number, filters: BalanceFilters) {
+  const { whereSql, params } = buildWhere(userId, filters as TransactionFilters);
 
   const [rows] = await pool.execute<mysql.RowDataPacket[]>(
     `
@@ -337,8 +341,8 @@ export async function getTotalBalance(filters: BalanceFilters) {
   };
 }
 
-export async function getAverages(filters: AverageFilters) {
-  const { whereSql, params } = buildWhere(filters as TransactionFilters);
+export async function getAverages(userId: number, filters: AverageFilters) {
+  const { whereSql, params } = buildWhere(userId, filters as TransactionFilters);
   const periodFormat = filters.period === "day" ? "%Y-%m-%d" : "%Y-%m";
   const periodExpr = `DATE_FORMAT(occurred_at, '${periodFormat}')`;
 
@@ -376,9 +380,9 @@ export async function getAverages(filters: AverageFilters) {
   };
 }
 
-function buildWhere(filters: TransactionFilters): QueryParts {
-  const clauses: string[] = [];
-  const params: SqlParam[] = [];
+function buildWhere(userId: number, filters: TransactionFilters): QueryParts {
+  const clauses: string[] = ["user_id = ?"];
+  const params: SqlParam[] = [userId];
 
   addClause(clauses, params, "occurred_at >= ?", parseStartDate(filters.start_date));
   addClause(clauses, params, "occurred_at <= ?", parseEndDate(filters.end_date));
@@ -541,19 +545,20 @@ function mapPayPeriodRow(row: mysql.RowDataPacket): PayPeriod {
 
 async function upsertBudgetGroupInConn(
   conn: mysql.PoolConnection,
+  userId: number,
   pay_period_id: number,
   group: GroupInput
 ): Promise<number> {
   await conn.execute(
-    `INSERT INTO budget_groups (pay_period_id, name, amount, budget_type)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO budget_groups (user_id, pay_period_id, name, amount, budget_type)
+     VALUES (?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE amount = VALUES(amount), budget_type = VALUES(budget_type), updated_at = NOW()`,
-    [pay_period_id, group.name, group.amount, group.budget_type ?? "spending"]
+    [userId, pay_period_id, group.name, group.amount, group.budget_type ?? "spending"]
   );
 
   const [rows] = await conn.execute<mysql.RowDataPacket[]>(
-    `SELECT id FROM budget_groups WHERE pay_period_id = ? AND name = ? LIMIT 1`,
-    [pay_period_id, group.name]
+    `SELECT id FROM budget_groups WHERE pay_period_id = ? AND name = ? AND user_id = ? LIMIT 1`,
+    [pay_period_id, group.name, userId]
   );
   if (rows.length === 0) throw new Error(`Budget group not found after upsert (pay_period_id=${pay_period_id}, name=${group.name})`);
   const groupId = Number(rows[0].id);
@@ -571,14 +576,14 @@ async function upsertBudgetGroupInConn(
   return groupId;
 }
 
-async function fetchBudgetGroupsWithCategories(pay_period_id: number): Promise<BudgetGroup[]> {
+async function fetchBudgetGroupsWithCategories(userId: number, pay_period_id: number): Promise<BudgetGroup[]> {
   const [rows] = await pool.execute<mysql.RowDataPacket[]>(
     `SELECT bg.id, bg.pay_period_id, bg.name, bg.amount, bg.budget_type, bgc.category
      FROM budget_groups bg
      LEFT JOIN budget_group_categories bgc ON bgc.budget_group_id = bg.id
-     WHERE bg.pay_period_id = ?
+     WHERE bg.pay_period_id = ? AND bg.user_id = ?
      ORDER BY bg.id, bgc.category`,
-    [pay_period_id]
+    [pay_period_id, userId]
   );
 
   const map = new Map<number, BudgetGroup>();
@@ -626,42 +631,43 @@ function groupMetrics(
 
 // Pay Period
 
-export async function createPayPeriod(input: {
+export async function createPayPeriod(userId: number, input: {
   period_start: string;
   salary_amount: number;
   salary_txn_id?: number;
   notes?: string;
 }): Promise<PayPeriod> {
   const [result] = await pool.execute<mysql.ResultSetHeader>(
-    `INSERT INTO pay_periods (period_start, salary_amount, salary_txn_id, notes) VALUES (?, ?, ?, ?)`,
-    [input.period_start, input.salary_amount, input.salary_txn_id ?? null, input.notes ?? null]
+    `INSERT INTO pay_periods (user_id, period_start, salary_amount, salary_txn_id, notes) VALUES (?, ?, ?, ?, ?)`,
+    [userId, input.period_start, input.salary_amount, input.salary_txn_id ?? null, input.notes ?? null]
   );
-  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? LIMIT 1`, [result.insertId]);
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? AND user_id = ? LIMIT 1`, [result.insertId, userId]);
   return mapPayPeriodRow(rows[0]);
 }
 
-export async function closePayPeriod(period_id: number, period_end: string): Promise<PayPeriod> {
+export async function closePayPeriod(userId: number, period_id: number, period_end: string): Promise<PayPeriod> {
   await pool.execute(
-    `UPDATE pay_periods SET period_end = ?, status = 'closed', updated_at = NOW() WHERE id = ?`,
-    [period_end, period_id]
+    `UPDATE pay_periods SET period_end = ?, status = 'closed', updated_at = NOW() WHERE id = ? AND user_id = ?`,
+    [period_end, period_id, userId]
   );
-  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? LIMIT 1`, [period_id]);
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? AND user_id = ? LIMIT 1`, [period_id, userId]);
   if (rows.length === 0) throw new Error(`Pay period ${period_id} not found`);
   return mapPayPeriodRow(rows[0]);
 }
 
-export async function getCurrentPeriod(): Promise<PayPeriodWithDays | null> {
+export async function getCurrentPeriod(userId: number): Promise<PayPeriodWithDays | null> {
   const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-    `SELECT * FROM pay_periods WHERE status IN ('active','estimated') ORDER BY period_start DESC LIMIT 1`
+    `SELECT * FROM pay_periods WHERE user_id = ? AND status IN ('active','estimated') ORDER BY period_start DESC LIMIT 1`,
+    [userId]
   );
   if (rows.length === 0) return null;
   const p = mapPayPeriodRow(rows[0]);
   return { ...p, ...budgetComputeDays(p.period_start, p.period_end) };
 }
 
-export async function listPayPeriods(limit = 6): Promise<PayPeriodWithDays[]> {
+export async function listPayPeriods(userId: number, limit = 6): Promise<PayPeriodWithDays[]> {
   const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-    `SELECT * FROM pay_periods ORDER BY period_start DESC LIMIT ?`, [limit]
+    `SELECT * FROM pay_periods WHERE user_id = ? ORDER BY period_start DESC LIMIT ?`, [userId, limit]
   );
   return rows.map((row) => {
     const p = mapPayPeriodRow(row);
@@ -671,19 +677,31 @@ export async function listPayPeriods(limit = 6): Promise<PayPeriodWithDays[]> {
 
 // Budget Group
 
+// Throws "not found" (never "forbidden") if the pay period doesn't exist OR
+// belongs to another user — never leak existence across tenants.
+async function assertPayPeriodOwned(userId: number, pay_period_id: number): Promise<void> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT id FROM pay_periods WHERE id = ? AND user_id = ? LIMIT 1`,
+    [pay_period_id, userId]
+  );
+  if (rows.length === 0) throw new Error(`Pay period ${pay_period_id} not found`);
+}
+
 export async function setBudgetGroupsBulk(
+  userId: number,
   pay_period_id: number,
   groups: GroupInput[],
   replace_all = false
 ): Promise<{ group_ids: number[] }> {
+  await assertPayPeriodOwned(userId, pay_period_id);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     if (replace_all) {
-      await conn.execute(`DELETE FROM budget_groups WHERE pay_period_id = ?`, [pay_period_id]);
+      await conn.execute(`DELETE FROM budget_groups WHERE pay_period_id = ? AND user_id = ?`, [pay_period_id, userId]);
     }
     const group_ids: number[] = [];
-    for (const g of groups) group_ids.push(await upsertBudgetGroupInConn(conn, pay_period_id, g));
+    for (const g of groups) group_ids.push(await upsertBudgetGroupInConn(conn, userId, pay_period_id, g));
     await conn.commit();
     return { group_ids };
   } catch (e) {
@@ -694,28 +712,28 @@ export async function setBudgetGroupsBulk(
   }
 }
 
-export async function setBudgetGroup(pay_period_id: number, input: GroupInput): Promise<{ group_id: number }> {
-  const { group_ids } = await setBudgetGroupsBulk(pay_period_id, [input]);
+export async function setBudgetGroup(userId: number, pay_period_id: number, input: GroupInput): Promise<{ group_id: number }> {
+  const { group_ids } = await setBudgetGroupsBulk(userId, pay_period_id, [input]);
   return { group_id: group_ids[0] };
 }
 
-export async function getBudgetGroups(pay_period_id: number): Promise<BudgetGroup[]> {
-  return fetchBudgetGroupsWithCategories(pay_period_id);
+export async function getBudgetGroups(userId: number, pay_period_id: number): Promise<BudgetGroup[]> {
+  return fetchBudgetGroupsWithCategories(userId, pay_period_id);
 }
 
-export async function deleteBudgetGroup(group_id: number): Promise<{ deleted: number }> {
-  const [result] = await pool.execute<mysql.ResultSetHeader>(`DELETE FROM budget_groups WHERE id = ?`, [group_id]);
+export async function deleteBudgetGroup(userId: number, group_id: number): Promise<{ deleted: number }> {
+  const [result] = await pool.execute<mysql.ResultSetHeader>(`DELETE FROM budget_groups WHERE id = ? AND user_id = ?`, [group_id, userId]);
   return { deleted: result.affectedRows };
 }
 
 // Budget Summary
 
-export async function getBudgetSummary(pay_period_id: number, transactions: InputTransaction[]) {
-  const [pRows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? LIMIT 1`, [pay_period_id]);
+export async function getBudgetSummary(userId: number, pay_period_id: number, transactions: InputTransaction[]) {
+  const [pRows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM pay_periods WHERE id = ? AND user_id = ? LIMIT 1`, [pay_period_id, userId]);
   if (pRows.length === 0) throw new Error(`Pay period ${pay_period_id} not found`);
   const period = mapPayPeriodRow(pRows[0]);
 
-  const groups = await fetchBudgetGroupsWithCategories(pay_period_id);
+  const groups = await fetchBudgetGroupsWithCategories(userId, pay_period_id);
   const { days_elapsed, days_total, days_remaining } = budgetComputeDays(period.period_start, period.period_end);
 
   const allMapped = new Set(groups.flatMap((g) => g.categories));
@@ -761,8 +779,8 @@ export async function getBudgetSummary(pay_period_id: number, transactions: Inpu
   };
 }
 
-export async function getGroupDetail(pay_period_id: number, budget_group_id: number, transactions: InputTransaction[]) {
-  const groups = await fetchBudgetGroupsWithCategories(pay_period_id);
+export async function getGroupDetail(userId: number, pay_period_id: number, budget_group_id: number, transactions: InputTransaction[]) {
+  const groups = await fetchBudgetGroupsWithCategories(userId, pay_period_id);
   const group = groups.find((g) => g.id === budget_group_id);
   if (!group) throw new Error(`Budget group ${budget_group_id} not found in period ${pay_period_id}`);
 
@@ -789,28 +807,29 @@ export async function getGroupDetail(pay_period_id: number, budget_group_id: num
 
 // Template
 
-export async function saveBudgetTemplate(name: string, groups: GroupInput[]): Promise<BudgetTemplate> {
+export async function saveBudgetTemplate(userId: number, name: string, groups: GroupInput[]): Promise<BudgetTemplate> {
   await pool.execute(
-    `INSERT INTO budget_templates (name, groups_json) VALUES (?, ?)
+    `INSERT INTO budget_templates (user_id, name, groups_json) VALUES (?, ?, ?)
      ON DUPLICATE KEY UPDATE groups_json = VALUES(groups_json), updated_at = NOW()`,
-    [name, JSON.stringify(groups)]
+    [userId, name, JSON.stringify(groups)]
   );
-  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE name = ? LIMIT 1`, [name]);
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE name = ? AND user_id = ? LIMIT 1`, [name, userId]);
   return mapTemplateRow(rows[0]);
 }
 
-export async function listBudgetTemplates(): Promise<BudgetTemplate[]> {
-  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates ORDER BY name`);
+export async function listBudgetTemplates(userId: number): Promise<BudgetTemplate[]> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE user_id = ? ORDER BY name`, [userId]);
   return rows.map(mapTemplateRow);
 }
 
-export async function deleteBudgetTemplate(template_id: number): Promise<{ deleted: number }> {
-  const [result] = await pool.execute<mysql.ResultSetHeader>(`DELETE FROM budget_templates WHERE id = ?`, [template_id]);
+export async function deleteBudgetTemplate(userId: number, template_id: number): Promise<{ deleted: number }> {
+  const [result] = await pool.execute<mysql.ResultSetHeader>(`DELETE FROM budget_templates WHERE id = ? AND user_id = ?`, [template_id, userId]);
   return { deleted: result.affectedRows };
 }
 
-export async function applyBudgetTemplate(pay_period_id: number, template_id: number): Promise<{ applied: number }> {
-  const [tRows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE id = ? LIMIT 1`, [template_id]);
+export async function applyBudgetTemplate(userId: number, pay_period_id: number, template_id: number): Promise<{ applied: number }> {
+  await assertPayPeriodOwned(userId, pay_period_id);
+  const [tRows] = await pool.execute<mysql.RowDataPacket[]>(`SELECT * FROM budget_templates WHERE id = ? AND user_id = ? LIMIT 1`, [template_id, userId]);
   if (tRows.length === 0) throw new Error(`Template ${template_id} not found`);
 
   const groups: GroupInput[] = typeof tRows[0].groups_json === "string"
@@ -822,8 +841,8 @@ export async function applyBudgetTemplate(pay_period_id: number, template_id: nu
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    await conn.execute(`DELETE FROM budget_groups WHERE pay_period_id = ?`, [pay_period_id]);
-    for (const g of groups) await upsertBudgetGroupInConn(conn, pay_period_id, g);
+    await conn.execute(`DELETE FROM budget_groups WHERE pay_period_id = ? AND user_id = ?`, [pay_period_id, userId]);
+    for (const g of groups) await upsertBudgetGroupInConn(conn, userId, pay_period_id, g);
     await conn.commit();
     return { applied: groups.length };
   } catch (e) {
