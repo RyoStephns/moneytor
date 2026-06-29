@@ -667,7 +667,7 @@ export async function getCurrentPeriod(userId: number): Promise<PayPeriodWithDay
 
 export async function listPayPeriods(userId: number, limit = 6): Promise<PayPeriodWithDays[]> {
   const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-    `SELECT * FROM pay_periods WHERE user_id = ? ORDER BY period_start DESC LIMIT ?`, [userId, limit]
+    `SELECT * FROM pay_periods WHERE user_id = ? ORDER BY period_start DESC LIMIT ${Number(limit)}`, [userId]
   );
   return rows.map((row) => {
     const p = mapPayPeriodRow(row);
