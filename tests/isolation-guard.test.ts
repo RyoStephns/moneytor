@@ -38,6 +38,9 @@ const SENSITIVE_TABLES = [
   "pay_periods",
   "budget_groups",
   "budget_templates",
+  "accounts",
+  "transfers",
+  "account_adjustments",
 ];
 
 const sqlLiterals = extractSqlLiterals(source);

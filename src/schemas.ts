@@ -8,7 +8,7 @@ export const addTransactionSchema = {
   category: z.string().min(1).max(120).describe("Short category, for example food, transport, salary, rent."),
   description: z.string().max(500).optional().describe("Short human-readable transaction description."),
   date: z.string().optional().describe("ISO date or datetime. Date-only values are treated as local day start."),
-  account: z.string().max(120).optional().describe("Wallet, bank account, card, or payment source."),
+  account: z.string().max(120).optional().describe("Name of a registered account exactly as listed by list_accounts, for example Tunai or BCA. Omit to use the default account."),
   tags: z.array(z.string().min(1).max(60)).max(20).optional().describe("Optional tags for later filtering."),
   source: z.string().max(120).optional().describe("Where this entry came from, for example claude.ai."),
   notes: z.string().max(2000).optional().describe("Longer notes.")
@@ -19,7 +19,7 @@ export const listTransactionsSchema = {
   end_date: z.string().optional().describe("Inclusive ISO date or datetime upper bound."),
   type: transactionTypeSchema.optional(),
   category: z.string().max(120).optional(),
-  account: z.string().max(120).optional(),
+  account: z.string().max(120).optional().describe("Account name. Also matches the free-text label on older transactions."),
   tag: z.string().max(60).optional().describe("Return rows containing this tag."),
   keyword: z.string().max(200).optional().describe("Free-text search across description and notes fields. Use category/account filters for exact-match filtering."),
   limit: z.number().int().positive().max(500).default(100),
@@ -33,7 +33,7 @@ export const updateTransactionSchema = {
   category: z.string().min(1).max(120).optional().describe("New category. Must match an existing category from list_categories."),
   description: z.string().max(500).optional().describe("New short description. Omit to leave unchanged."),
   date: z.string().optional().describe("New ISO date or datetime for when the transaction occurred."),
-  account: z.string().max(120).optional().describe("New account/wallet/card. Omit to leave unchanged."),
+  account: z.string().max(120).optional().describe("Move the transaction to this registered account (name from list_accounts). Omit to leave unchanged."),
   tags: z.array(z.string().min(1).max(60)).max(20).optional().describe("Replacement tag list. Omit to leave unchanged."),
   source: z.string().max(120).optional().describe("New source label. Omit to leave unchanged."),
   notes: z.string().max(2000).optional().describe("New long-form notes. Omit to leave unchanged.")
@@ -60,7 +60,7 @@ export const summarySchema = {
 export const totalBalanceSchema = {
   start_date: z.string().optional().describe("Inclusive ISO date lower bound. Omit for all-time balance."),
   end_date: z.string().optional().describe("Inclusive ISO date upper bound."),
-  account: z.string().max(120).optional().describe("Filter by account/wallet.")
+  account: z.string().max(120).optional().describe("Only this account's transactions. The result is income minus expense, so transfers, opening balance, and adjustments are not included; use list_accounts for an account's real balance.")
 };
 
 export const averagesSchema = {
@@ -156,4 +156,62 @@ export const applyBudgetTemplateSchema = {
 
 export const deleteBudgetTemplateSchema = {
   template_id: z.number().int(),
+};
+
+// ─── Accounts ─────────────────────────────────────────────────────────────────
+
+const accountName = (what: string) => z.string().min(1).max(120).describe(what);
+
+export const accountTypeSchema = z.enum(["cash", "bank", "ewallet", "other"]);
+
+export const addAccountSchema = {
+  name: accountName("Account name, for example Tunai, BCA, Blu. Must be unique (case-insensitive)."),
+  type: accountTypeSchema.describe("cash = physical cash, bank = bank account, ewallet = e-wallet or digital wallet, other = anything else."),
+  description: z.string().max(500).optional().describe("Short note about what this account is for."),
+  opening_balance: z.number().optional().describe("Money already in the account when you start tracking it. Defaults to 0.")
+};
+
+export const updateAccountSchema = {
+  account: accountName("Current name of the account to change."),
+  new_name: z.string().min(1).max(120).optional().describe("Rename the account. Existing transactions follow the new name."),
+  type: accountTypeSchema.optional(),
+  description: z.string().max(500).nullable().optional().describe("New description, or null to clear it. Omit to leave unchanged.")
+};
+
+export const listAccountsSchema = {
+  include_archived: z.boolean().default(false).describe("Also list archived accounts.")
+};
+
+export const removeAccountSchema = {
+  account: accountName("Name of the account to remove.")
+};
+
+export const setDefaultAccountSchema = {
+  account: accountName("Name of the account to make the default.")
+};
+
+export const transferSchema = {
+  from_account: accountName("Account the money leaves, as listed by list_accounts."),
+  to_account: accountName("Account the money goes to, as listed by list_accounts."),
+  amount: z.number().positive().describe("Amount moved, as a positive number."),
+  date: z.string().optional().describe("ISO date or datetime. Date-only values are treated as local day start. Omit for now."),
+  notes: z.string().max(1000).optional().describe("Optional note.")
+};
+
+export const listTransfersSchema = {
+  start_date: z.string().optional().describe("Inclusive ISO date or datetime lower bound."),
+  end_date: z.string().optional().describe("Inclusive ISO date or datetime upper bound."),
+  account: z.string().max(120).optional().describe("Only transfers into or out of this account."),
+  limit: z.number().int().positive().max(500).default(100),
+  offset: z.number().int().min(0).default(0)
+};
+
+export const deleteTransferSchema = {
+  id: z.number().int().positive().describe("ID of the transfer to delete.")
+};
+
+export const reconcileAccountSchema = {
+  account: accountName("Account to match against the real balance."),
+  actual_balance: z.number().describe("The balance the user actually sees right now, for example in the bank app."),
+  notes: z.string().max(1000).optional().describe("Optional note about the difference.")
 };

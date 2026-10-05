@@ -13,6 +13,7 @@ export type Transaction = {
   description: string | null;
   occurred_at: string;
   account: string | null;
+  account_id: number | null;
   tags: string[];
   source: string | null;
   notes: string | null;
@@ -126,10 +127,13 @@ export async function addTransaction(userId: number, input: AddTransactionInput)
     );
   }
 
+  const wanted = input.account?.trim();
+  const accountId = wanted ? await accountIdByName(userId, wanted) : await defaultAccountId(userId);
+
   const [result] = await pool.execute<mysql.ResultSetHeader>(
     `
       INSERT INTO transactions
-        (user_id, type, amount, currency, category, description, occurred_at, account, tags_json, source, notes)
+        (user_id, type, amount, currency, category, description, occurred_at, account_id, tags_json, source, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
@@ -140,7 +144,7 @@ export async function addTransaction(userId: number, input: AddTransactionInput)
       input.category,
       input.description ?? null,
       occurredAt,
-      input.account ?? null,
+      accountId,
       JSON.stringify(tags),
       input.source ?? "claude.ai",
       input.notes ?? null
@@ -153,7 +157,8 @@ export async function addTransaction(userId: number, input: AddTransactionInput)
 export async function getTransaction(userId: number, id: number): Promise<Transaction> {
   const [rows] = await pool.execute<MysqlTransactionRow[]>(
     `
-      SELECT id, type, amount, currency, category, description, occurred_at, account,
+      SELECT id, type, amount, currency, category, description, occurred_at,
+        ${ACCOUNT_NAME_SQL} AS account, account_id,
         tags_json, source, notes, created_at, updated_at
       FROM transactions
       WHERE id = ? AND user_id = ?
@@ -176,7 +181,8 @@ export async function listTransactions(userId: number, filters: TransactionFilte
 
   const [rows] = await pool.execute<MysqlTransactionRow[]>(
     `
-      SELECT id, type, amount, currency, category, description, occurred_at, account,
+      SELECT id, type, amount, currency, category, description, occurred_at,
+        ${ACCOUNT_NAME_SQL} AS account, account_id,
         tags_json, source, notes, created_at, updated_at
       FROM transactions
       ${whereSql}
@@ -198,7 +204,10 @@ export async function updateTransaction(userId: number, input: UpdateTransaction
   addUpdate(updates, params, "category", input.category);
   addUpdate(updates, params, "description", input.description);
   addUpdate(updates, params, "occurred_at", input.date ? parseInputDate(input.date) : undefined);
-  addUpdate(updates, params, "account", input.account);
+  if (input.account !== undefined) {
+    addUpdate(updates, params, "account_id", input.account === null ? null : await accountIdByName(userId, input.account));
+    addUpdate(updates, params, "account", null);
+  }
   addUpdate(updates, params, "source", input.source);
   addUpdate(updates, params, "notes", input.notes);
 
@@ -271,11 +280,14 @@ export async function getFinanceSummary(userId: number, filters: SummaryFilters)
 
   const [byAccount] = await pool.execute<mysql.RowDataPacket[]>(
     `
-      SELECT COALESCE(account, 'uncategorized') AS account, type, currency,
+      SELECT account, type, currency,
         COUNT(*) AS transaction_count, COALESCE(SUM(amount), 0) AS total
-      FROM transactions
-      ${whereSql}
-      GROUP BY COALESCE(account, 'uncategorized'), type, currency
+      FROM (
+        SELECT COALESCE(${ACCOUNT_NAME_SQL}, 'uncategorized') AS account, type, currency, amount
+        FROM transactions
+        ${whereSql}
+      ) labeled
+      GROUP BY account, type, currency
       ORDER BY total DESC
     `,
     params
@@ -388,7 +400,11 @@ function buildWhere(userId: number, filters: TransactionFilters): QueryParts {
   addClause(clauses, params, "occurred_at <= ?", parseEndDate(filters.end_date));
   addClause(clauses, params, "type = ?", filters.type);
   addClause(clauses, params, "category = ?", filters.category);
-  addClause(clauses, params, "account = ?", filters.account);
+
+  if (filters.account) {
+    clauses.push("(account_id IN (SELECT id FROM accounts WHERE user_id = ? AND name = ?) OR account = ?)");
+    params.push(userId, filters.account, filters.account);
+  }
 
   if (filters.tag) {
     clauses.push("JSON_CONTAINS(tags_json, JSON_QUOTE(?), '$')");
@@ -451,6 +467,7 @@ function mapTransaction(row: MysqlTransactionRow): Transaction {
     description: row.description,
     occurred_at: String(row.occurred_at),
     account: row.account,
+    account_id: row.account_id === null ? null : Number(row.account_id),
     tags,
     source: row.source,
     notes: row.notes,
@@ -860,5 +877,387 @@ function mapTemplateRow(row: mysql.RowDataPacket): BudgetTemplate {
     groups: typeof row.groups_json === "string" ? JSON.parse(row.groups_json) as GroupInput[] : row.groups_json as GroupInput[],
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
     updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+  };
+}
+
+// Accounts
+
+export type AccountType = "cash" | "bank" | "ewallet" | "other";
+
+export type Account = {
+  id: number;
+  name: string;
+  type: AccountType;
+  description: string | null;
+  opening_balance: number;
+  is_default: boolean;
+  archived: boolean;
+  created_at: string;
+};
+
+export type AddAccountInput = {
+  name: string;
+  type: AccountType;
+  description?: string;
+  opening_balance?: number;
+};
+
+export type UpdateAccountInput = {
+  new_name?: string;
+  type?: AccountType;
+  description?: string | null;
+};
+
+const ACCOUNT_COLS = "id, name, type, description, opening_balance, is_default, archived_at, created_at";
+
+// Balance is never stored: opening balance plus everything that touched the account.
+const ACCOUNT_BALANCE_SQL = `(
+  accounts.opening_balance
+  + COALESCE((SELECT SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END)
+      FROM transactions WHERE account_id = accounts.id AND user_id = accounts.user_id), 0)
+  + COALESCE((SELECT SUM(amount) FROM transfers WHERE to_account_id = accounts.id AND user_id = accounts.user_id), 0)
+  - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = accounts.id AND user_id = accounts.user_id), 0)
+  + COALESCE((SELECT SUM(amount) FROM account_adjustments WHERE account_id = accounts.id AND user_id = accounts.user_id), 0)
+)`;
+
+export type AccountWithBalance = Account & { balance: number };
+
+function mapAccount(row: mysql.RowDataPacket): Account {
+  return {
+    id: Number(row.id),
+    name: String(row.name),
+    type: row.type,
+    description: row.description,
+    opening_balance: Number(row.opening_balance),
+    is_default: row.is_default === 1,
+    archived: row.archived_at !== null,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  };
+}
+
+function isNameTaken(e: unknown): boolean {
+  const err = e as { errno?: number; message?: string };
+  return err.errno === 1062 && String(err.message).includes("uq_accounts_user_name");
+}
+
+async function requireAccount(userId: number, name: string): Promise<Account> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT ${ACCOUNT_COLS} FROM accounts WHERE user_id = ? AND name = ? LIMIT 1`,
+    [userId, name.trim()]
+  );
+  if (rows.length === 0) {
+    const names = (await listAccounts(userId)).map((a) => a.name);
+    const known = names.length ? `Registered accounts: ${names.join(", ")}.` : "No accounts registered yet.";
+    throw new Error(`Account "${name}" not found. ${known} Use add_account to create a new one.`);
+  }
+  return mapAccount(rows[0]);
+}
+
+export async function listAccounts(userId: number, includeArchived = false): Promise<AccountWithBalance[]> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT ${ACCOUNT_COLS}, ${ACCOUNT_BALANCE_SQL} AS balance FROM accounts WHERE user_id = ? ${includeArchived ? "" : "AND archived_at IS NULL"} ORDER BY is_default DESC, name ASC`,
+    [userId]
+  );
+  return rows.map((r) => ({ ...mapAccount(r), balance: Number(r.balance) }));
+}
+
+export async function addAccount(userId: number, input: AddAccountInput): Promise<Account> {
+  const name = input.name.trim();
+  try {
+    await pool.execute(
+      `
+        INSERT INTO accounts (user_id, name, type, description, opening_balance, is_default)
+        SELECT ?, ?, ?, ?, ?, NOT EXISTS (SELECT 1 FROM accounts WHERE user_id = ? AND is_default = 1)
+      `,
+      [userId, name, input.type, input.description ?? null, input.opening_balance ?? 0, userId]
+    );
+  } catch (e) {
+    if (isNameTaken(e)) throw new Error(`Account "${name}" already exists.`);
+    throw e;
+  }
+  return requireAccount(userId, name);
+}
+
+export async function updateAccount(userId: number, name: string, input: UpdateAccountInput): Promise<Account> {
+  const acc = await requireAccount(userId, name);
+  const newName = input.new_name?.trim();
+  const updates: string[] = [];
+  const params: SqlParam[] = [];
+
+  addUpdate(updates, params, "name", newName);
+  addUpdate(updates, params, "type", input.type);
+  addUpdate(updates, params, "description", input.description);
+
+  if (updates.length === 0) return acc;
+
+  params.push(acc.id, userId);
+  try {
+    await pool.execute(`UPDATE accounts SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`, params);
+  } catch (e) {
+    if (isNameTaken(e)) throw new Error(`Account "${newName}" already exists.`);
+    throw e;
+  }
+  return requireAccount(userId, newName ?? acc.name);
+}
+
+export async function setDefaultAccount(userId: number, name: string): Promise<Account> {
+  const acc = await requireAccount(userId, name);
+  if (acc.archived) throw new Error(`Account "${acc.name}" is archived and cannot be the default.`);
+  if (acc.is_default) return acc;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute(`UPDATE accounts SET is_default = 0 WHERE user_id = ? AND is_default = 1`, [userId]);
+    await conn.execute(`UPDATE accounts SET is_default = 1 WHERE id = ? AND user_id = ?`, [acc.id, userId]);
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+  return { ...acc, is_default: true };
+}
+
+// Deletes only when the account has no history. The FKs from transfers and
+// adjustments cascade, so the check and the delete share one locked transaction.
+export async function removeAccount(userId: number, name: string): Promise<{ account: string; result: "deleted" | "archived" }> {
+  const acc = await requireAccount(userId, name);
+  if (acc.is_default) {
+    throw new Error(`Account "${acc.name}" is the default. Use set_default_account to pick another default first.`);
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute(`SELECT id FROM accounts WHERE id = ? AND user_id = ? FOR UPDATE`, [acc.id, userId]);
+    const [used] = await conn.execute<mysql.RowDataPacket[]>(
+      `
+        SELECT
+          (SELECT COUNT(*) FROM transactions WHERE user_id = ? AND account_id = ?) +
+          (SELECT COUNT(*) FROM transfers WHERE user_id = ? AND (from_account_id = ? OR to_account_id = ?)) +
+          (SELECT COUNT(*) FROM account_adjustments WHERE user_id = ? AND account_id = ?) AS used
+      `,
+      [userId, acc.id, userId, acc.id, acc.id, userId, acc.id]
+    );
+
+    const hasHistory = Number(used[0].used) > 0;
+    if (!hasHistory) {
+      await conn.execute(`DELETE FROM accounts WHERE id = ? AND user_id = ?`, [acc.id, userId]);
+    } else if (!acc.archived) {
+      await conn.execute(`UPDATE accounts SET archived_at = ? WHERE id = ? AND user_id = ?`, [nowForMysql(), acc.id, userId]);
+    }
+    await conn.commit();
+    return { account: acc.name, result: hasHistory ? "archived" : "deleted" };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+// transactions.account holds free text from before accounts existed, so reads
+// prefer the linked account's current name and fall back to that text.
+const ACCOUNT_NAME_SQL =
+  "COALESCE((SELECT a.name FROM accounts a WHERE a.id = transactions.account_id AND a.user_id = transactions.user_id), transactions.account)";
+
+async function accountIdByName(userId: number, name: string): Promise<number> {
+  const acc = await requireAccount(userId, name);
+  if (acc.archived) throw new Error(`Account "${acc.name}" is archived. Pick an active account or add a new one.`);
+  return acc.id;
+}
+
+// A user with no accounts yet keeps recording without one.
+async function defaultAccountId(userId: number): Promise<number | null> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT id FROM accounts WHERE user_id = ? AND is_default = 1 LIMIT 1`,
+    [userId]
+  );
+  return rows.length ? Number(rows[0].id) : null;
+}
+
+// Transfers
+
+export type Transfer = {
+  id: number;
+  from_account: string;
+  to_account: string;
+  amount: number;
+  occurred_at: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type TransferInput = {
+  from: string;
+  to: string;
+  amount: number;
+  date?: string;
+  notes?: string;
+};
+
+export type TransferFilters = {
+  start_date?: string;
+  end_date?: string;
+  account?: string;
+  limit?: number;
+  offset?: number;
+};
+
+const TRANSFER_COLS = "t.id, fa.name AS from_account, ta.name AS to_account, t.amount, t.occurred_at, t.notes, t.created_at";
+const TRANSFER_FROM =
+  "FROM transfers t JOIN accounts fa ON fa.id = t.from_account_id AND fa.user_id = t.user_id JOIN accounts ta ON ta.id = t.to_account_id AND ta.user_id = t.user_id";
+
+function mapTransfer(row: mysql.RowDataPacket): Transfer {
+  return {
+    id: Number(row.id),
+    from_account: String(row.from_account),
+    to_account: String(row.to_account),
+    amount: Number(row.amount),
+    occurred_at: row.occurred_at instanceof Date ? row.occurred_at.toISOString() : String(row.occurred_at),
+    notes: row.notes,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  };
+}
+
+export async function transferBetweenAccounts(userId: number, input: TransferInput): Promise<Transfer> {
+  if (!(input.amount > 0)) throw new Error("Transfer amount must be greater than zero.");
+  const from = await requireAccount(userId, input.from);
+  const to = await requireAccount(userId, input.to);
+  if (from.id === to.id) throw new Error(`Cannot transfer from "${from.name}" to itself.`);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // One lock per statement, lowest id first. A single IN (?, ?) query locks in
+    // whatever order the optimizer scans, and two opposite transfers deadlocked on it.
+    // Locking first also means the archived check sees rows nobody can change.
+    const locked: mysql.RowDataPacket[] = [];
+    for (const id of [from.id, to.id].sort((a, b) => a - b)) {
+      const [rows] = await conn.execute<mysql.RowDataPacket[]>(
+        `SELECT name, archived_at FROM accounts WHERE id = ? AND user_id = ? FOR UPDATE`,
+        [id, userId]
+      );
+      locked.push(...rows);
+    }
+    const archived = locked.find((a) => a.archived_at !== null);
+    if (archived) throw new Error(`Account "${archived.name}" is archived. Transfers need two active accounts.`);
+
+    const [res] = await conn.execute<mysql.ResultSetHeader>(
+      `INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, occurred_at, notes) VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, from.id, to.id, input.amount, parseInputDate(input.date), input.notes ?? null]
+    );
+    await conn.commit();
+    return getTransfer(userId, res.insertId);
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+async function getTransfer(userId: number, id: number): Promise<Transfer> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT ${TRANSFER_COLS} ${TRANSFER_FROM} WHERE t.id = ? AND t.user_id = ? LIMIT 1`,
+    [id, userId]
+  );
+  if (rows.length === 0) throw new Error(`Transfer not found: ${id}`);
+  return mapTransfer(rows[0]);
+}
+
+export async function listTransfers(userId: number, filters: TransferFilters): Promise<Transfer[]> {
+  const clauses: string[] = ["t.user_id = ?"];
+  const params: SqlParam[] = [userId];
+
+  addClause(clauses, params, "t.occurred_at >= ?", parseStartDate(filters.start_date));
+  addClause(clauses, params, "t.occurred_at <= ?", parseEndDate(filters.end_date));
+  if (filters.account) {
+    clauses.push("(fa.name = ? OR ta.name = ?)");
+    params.push(filters.account, filters.account);
+  }
+
+  const whereSql = `WHERE ${clauses.join(" AND ")}`;
+  const limit = filters.limit ?? 100;
+  const offset = filters.offset ?? 0;
+
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT ${TRANSFER_COLS} ${TRANSFER_FROM} ${whereSql} ORDER BY t.occurred_at DESC, t.id DESC LIMIT ${limit} OFFSET ${offset}`,
+    params
+  );
+  return rows.map(mapTransfer);
+}
+
+export async function deleteTransfer(userId: number, id: number): Promise<{ deleted: boolean; id: number }> {
+  const [result] = await pool.execute<mysql.ResultSetHeader>(`DELETE FROM transfers WHERE id = ? AND user_id = ?`, [id, userId]);
+  return { deleted: result.affectedRows > 0, id };
+}
+
+// Transactions with no linked account yet (everything recorded before accounts existed).
+export async function getUnassignedBalance(userId: number): Promise<{ balance: number; transaction_count: number }> {
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `
+      SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) AS balance, COUNT(*) AS n
+      FROM transactions
+      WHERE user_id = ? AND account_id IS NULL
+    `,
+    [userId]
+  );
+  return { balance: Number(rows[0].balance), transaction_count: Number(rows[0].n) };
+}
+
+export type ReconcileResult = {
+  account: string;
+  balance_before: number;
+  balance_after: number;
+  difference: number;
+  adjustment_id: number | null;
+};
+
+// The actual balance is a reading of right now, so the adjustment is stamped now.
+export async function reconcileAccount(userId: number, name: string, actualBalance: number, notes?: string): Promise<ReconcileResult> {
+  const acc = await requireAccount(userId, name);
+  if (acc.archived) throw new Error(`Account "${acc.name}" is archived. Pick an active account.`);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // The lock stops a new transaction or transfer landing between reading the balance and writing the adjustment.
+    await conn.execute(`SELECT id FROM accounts WHERE id = ? AND user_id = ? FOR UPDATE`, [acc.id, userId]);
+    const [rows] = await conn.execute<mysql.RowDataPacket[]>(
+      `SELECT ${ACCOUNT_BALANCE_SQL} AS balance FROM accounts WHERE id = ? AND user_id = ?`,
+      [acc.id, userId]
+    );
+    const before = Number(rows[0].balance);
+    const difference = round2(actualBalance - before);
+
+    let adjustmentId: number | null = null;
+    if (difference !== 0) {
+      const [res] = await conn.execute<mysql.ResultSetHeader>(
+        `INSERT INTO account_adjustments (user_id, account_id, amount, occurred_at, notes) VALUES (?, ?, ?, ?, ?)`,
+        [userId, acc.id, difference, nowForMysql(), notes ?? null]
+      );
+      adjustmentId = res.insertId;
+    }
+    await conn.commit();
+    return { account: acc.name, balance_before: before, balance_after: round2(before + difference), difference, adjustment_id: adjustmentId };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function getAccountOverview(userId: number, includeArchived = false) {
+  const all = await listAccounts(userId, true);
+  const unassigned = await getUnassignedBalance(userId);
+  return {
+    default_account: all.find((a) => a.is_default)?.name ?? null,
+    accounts: includeArchived ? all : all.filter((a) => !a.archived),
+    unassigned,
+    total_balance: round2(all.reduce((sum, a) => sum + a.balance, unassigned.balance)),
   };
 }
