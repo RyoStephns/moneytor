@@ -346,16 +346,16 @@ describe.skipIf(!HAS_DB)("accounts (requires MySQL)", () => {
       expect(await balances(A)).toEqual({ Tunai: 80000, BCA: 500000 });
     });
 
-    it("transactions without an account form their own group", async () => {
+    it("transactions with an unknown account are summed separately", async () => {
       await pool.execute(
         `INSERT INTO transactions (user_id, type, amount, category, account, occurred_at, tags_json) VALUES
          (?, 'expense', 2000, 'Makan', 'bca lama', NOW(3), '[]'), (?, 'income', 3000, 'Gaji', NULL, NOW(3), '[]')`,
         [A, A]
       );
-      expect(await repo.getUnassignedBalance(A)).toEqual({ balance: 1000, transaction_count: 2 });
+      expect(await repo.getUnknownAccountBalance(A)).toEqual({ balance: 1000, transaction_count: 2 });
     });
 
-    it("every group adds up to the overall balance, nothing lost or counted twice", async () => {
+    it("account balances plus unknown-account history match overall flow, openings, and adjustments", async () => {
       await seed();
       await pool.execute(
         `INSERT INTO transactions (user_id, type, amount, category, occurred_at, tags_json) VALUES (?, 'expense', 4000, 'Makan', NOW(3), '[]')`,
@@ -368,7 +368,7 @@ describe.skipIf(!HAS_DB)("accounts (requires MySQL)", () => {
 
       const accounts = await repo.listAccounts(A, true);
       expect(accounts.map((a) => a.name).sort()).toEqual(["BCA", "Blu", "Tunai"]);
-      const grouped = accounts.reduce((sum, a) => sum + a.balance, 0) + (await repo.getUnassignedBalance(A)).balance;
+      const grouped = accounts.reduce((sum, a) => sum + a.balance, 0) + (await repo.getUnknownAccountBalance(A)).balance;
 
       const openings = accounts.reduce((sum, a) => sum + a.opening_balance, 0);
       const [adj] = await pool.execute<import("mysql2/promise").RowDataPacket[]>(
@@ -376,6 +376,43 @@ describe.skipIf(!HAS_DB)("accounts (requires MySQL)", () => {
       );
       const overall = (await repo.getTotalBalance(A, {})).balance;
       expect(grouped).toBe(overall + openings + Number(adj[0].total));
+    });
+
+    it("total_balance is the sum of the account balances and leaves old history out", async () => {
+      await pool.execute(
+        `INSERT INTO transactions (user_id, type, amount, category, account, occurred_at, tags_json) VALUES
+         (?, 'income', 5000000, 'Gaji', 'BCA', NOW(3), '[]'), (?, 'expense', 1500000, 'Makan', NULL, NOW(3), '[]')`,
+        [A, A]
+      );
+      await repo.addAccount(A, { name: "BCA", type: "bank" });
+      await repo.addAccount(A, { name: "Blu", type: "ewallet" });
+      await repo.reconcileAccount(A, "BCA", 2000000);
+      await repo.reconcileAccount(A, "Blu", 1400000);
+
+      const o = await repo.getAccountOverview(A);
+      expect(o.unknown_account).toMatchObject({ balance: 3500000, transaction_count: 2 });
+      expect(o.total_balance).toBe(3400000);
+    });
+
+    it("with no accounts yet, total_balance falls back to the history instead of reading 0", async () => {
+      await pool.execute(
+        `INSERT INTO transactions (user_id, type, amount, category, occurred_at, tags_json) VALUES
+         (?, 'income', 3000, 'Gaji', NOW(3), '[]'), (?, 'expense', 1000, 'Makan', NOW(3), '[]')`,
+        [A, A]
+      );
+      const o = await repo.getAccountOverview(A);
+      expect(o).toMatchObject({ accounts: [], total_balance: 2000, unknown_account: { balance: 2000, transaction_count: 2 } });
+    });
+
+    it("an archived account that still holds money stays in total_balance", async () => {
+      await repo.addAccount(A, { name: "Tunai", type: "cash", opening_balance: 10000 });
+      await repo.addAccount(A, { name: "Blu", type: "ewallet" });
+      await repo.transferBetweenAccounts(A, { from: "Tunai", to: "Blu", amount: 4000 });
+      expect((await repo.removeAccount(A, "Blu")).result).toBe("archived");
+
+      const o = await repo.getAccountOverview(A);
+      expect(o.accounts.map((a) => a.name)).toEqual(["Tunai"]);
+      expect(o.total_balance).toBe(10000);
     });
 
     it("reconcile writes the difference as an adjustment and leaves income and expense alone", async () => {

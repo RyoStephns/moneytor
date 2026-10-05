@@ -1195,8 +1195,8 @@ export async function deleteTransfer(userId: number, id: number): Promise<{ dele
   return { deleted: result.affectedRows > 0, id };
 }
 
-// Transactions with no linked account yet (everything recorded before accounts existed).
-export async function getUnassignedBalance(userId: number): Promise<{ balance: number; transaction_count: number }> {
+// Transactions whose account is unknown: everything recorded before accounts existed.
+export async function getUnknownAccountBalance(userId: number): Promise<{ balance: number; transaction_count: number }> {
   const [rows] = await pool.execute<mysql.RowDataPacket[]>(
     `
       SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) AS balance, COUNT(*) AS n
@@ -1253,11 +1253,17 @@ export async function reconcileAccount(userId: number, name: string, actualBalan
 
 export async function getAccountOverview(userId: number, includeArchived = false) {
   const all = await listAccounts(userId, true);
-  const unassigned = await getUnassignedBalance(userId);
+  const unknown = await getUnknownAccountBalance(userId);
+  // Reconciled account balances already hold the same money the old history adds up to,
+  // so the history stays out of the total. With no accounts yet it is all there is.
+  const total = all.length ? all.reduce((sum, a) => sum + a.balance, 0) : unknown.balance;
   return {
     default_account: all.find((a) => a.is_default)?.name ?? null,
     accounts: includeArchived ? all : all.filter((a) => !a.archived),
-    unassigned,
-    total_balance: round2(all.reduce((sum, a) => sum + a.balance, unassigned.balance)),
+    unknown_account: {
+      ...unknown,
+      note: "History recorded before accounts were used, source account unknown. Informational only: not part of total_balance."
+    },
+    total_balance: round2(total),
   };
 }

@@ -351,7 +351,7 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
     "list_accounts",
     {
       title: "List accounts",
-      description: "List the user's accounts (cash, banks, e-wallets) with each current balance and which one is the default. Also returns an unassigned group: older transactions that are not linked to any account yet, and total_balance across everything. Call this before add_transaction, update_transaction, transfer_between_accounts, or reconcile_account so the account name you pass matches a registered one. If the user names an account that is not listed, call add_account first; never guess a name.",
+      description: "List the user's accounts (cash, banks, e-wallets) with each current balance and which one is the default. total_balance is the sum of the account balances. Also returns unknown_account: older history whose source account is unknown, shown for information only and not part of total_balance. Call this before add_transaction, update_transaction, transfer_between_accounts, or reconcile_account so the account name you pass matches a registered one. If the user names an account that is not listed, call add_account first; never guess a name.",
       inputSchema: listAccountsSchema
     },
     async (input) => jsonResult(await getAccountOverview(userId, input.include_archived))

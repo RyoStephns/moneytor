@@ -85,7 +85,8 @@ describe.skipIf(!HAS_DB)("account tools over MCP (requires MySQL)", () => {
     const overview = (await call("list_accounts")).json;
     expect(overview.default_account).toBe("Tunai");
     expect(Object.fromEntries(overview.accounts.map((a: { name: string; balance: number }) => [a.name, a.balance]))).toEqual({ Tunai: 140000, BCA: 399000 });
-    expect(overview.unassigned).toEqual({ balance: 0, transaction_count: 0 });
+    expect(overview.unknown_account).toMatchObject({ balance: 0, transaction_count: 0 });
+    expect(overview).not.toHaveProperty("unassigned");
     expect(overview.total_balance).toBe(539000);
 
     const summary = (await call("get_finance_summary", {})).json;
