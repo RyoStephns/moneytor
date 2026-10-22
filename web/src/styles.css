@@ -464,7 +464,7 @@ h3.subtitle {
 .filters .dates .error { grid-column: 1 / -1; }
 @media (min-width: 840px) {
   .page.dash { grid-template-columns: minmax(340px, 400px) minmax(0, 1fr); gap: var(--s6) var(--s7); }
-  .dash-side { position: sticky; top: var(--s5); }
+  .dash-side { position: sticky; top: var(--side-top, var(--s5)); }
 }
 @media (max-width: 599px) {
   .page.dash { width: calc(100% - 2 * var(--s4)); margin-top: var(--s6); }
@@ -486,11 +486,14 @@ h3.subtitle {
 .chart { min-height: 220px; }
 .chart svg { display: block; overflow: visible; }
 .chart .axis { stroke: var(--ink); stroke-width: 2; }
-.chart .avg { stroke: var(--zone-3); stroke-width: 2; stroke-dasharray: 6 6; }
+.chart .avg { fill: none; stroke: var(--zone-3); stroke-width: 2; stroke-dasharray: 6 6; }
 .chart .run { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: miter; }
 .chart .today line { stroke: var(--magenta); stroke-width: 2; }
 .chart .today text { fill: var(--magenta-ink); font: 650 0.8125rem var(--font); font-variant-numeric: tabular-nums; }
-.chart .tick { fill: var(--ink-2); font: 600 0.8125rem var(--font); }
+.chart .tick { fill: var(--ink-2); font: 600 0.8125rem var(--font); font-variant-numeric: tabular-nums; }
+.chart .grid { stroke: var(--rule); stroke-width: 1; }
+.chart .budget line { stroke: var(--ink); stroke-width: 1; }
+.chart .budget text { fill: var(--ink); font: 650 0.8125rem var(--font); font-variant-numeric: tabular-nums; }
 
 /* where it went: income at the top, each category stepping it down; the tick is the usual amount */
 /* every row sits on the list's own columns, so all tracks share one width and therefore one scale */
@@ -511,15 +514,35 @@ h3.subtitle {
 .steps-down .step.key .legend, .steps-down .step.key .dev { color: var(--magenta-ink); }
 .steps-down .step.total { border-top: 1px solid var(--ink); }
 .steps-down .step.total .amt { font-size: 1.1875rem; font-weight: 700; }
+.steps-down .amt .of { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--ink-2); }
+.steps-down .step.total .amt .of { font-size: 0.8125rem; font-weight: 400; }
+
+/* a row label that opens its detail: reads as the label, acts as a button */
+.row-toggle { all: unset; cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
+.row-toggle:hover { text-decoration-color: currentColor; }
+.row-toggle:focus-visible { outline: 2px solid var(--magenta); outline-offset: 2px; }
+.steps-down .step .row-toggle[aria-expanded="true"] { text-decoration-color: currentColor; }
+.steps-down .detail { grid-column: 1 / -1; padding: var(--s2) var(--s3) var(--s3) var(--s5); border-bottom: 1px solid var(--rule); background: var(--zone-9); }
+.steps-down .detail ul { list-style: none; padding: 0; }
+.steps-down .cats > li { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: var(--s1) var(--s3); padding: var(--s1) 0; }
+.steps-down .cats .amt { font-weight: 400; }
+.steps-down .txns { grid-column: 1 / -1; margin: var(--s1) 0 var(--s2); border-left: 2px solid var(--rule-strong); padding-left: var(--s3) !important; }
+.steps-down .txns > li { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr) max-content; gap: var(--s3); padding: 2px 0; font-size: 0.9375rem; }
+.steps-down .txns .when { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.steps-down .txns .skeleton { height: 1.25rem; }
+.record.months tr.picked > * { background: var(--zone-9); }
+.record.months tr.picked .row-toggle { text-decoration-color: currentColor; font-weight: 650; }
 
 @media (max-width: 599px) {
   /* label and amount share the first line; the track always gets the same width beside a fixed % column */
   .steps-down { grid-template-columns: minmax(0, 1fr) 4.75rem; }
   .steps-down .step { row-gap: var(--s2); padding: var(--s3) 0; }
-  .steps-down .legend { grid-area: 1 / 1 / 2 / 3; justify-self: start; }
-  .steps-down .amt { grid-area: 1 / 1 / 2 / 3; justify-self: end; }
-  .steps-down .track { grid-area: 2 / 1 / 3 / 2; }
-  .steps-down .dev { grid-area: 2 / 2 / 3 / 3; }
+  .steps-down .step > .legend { grid-area: 1 / 1 / 2 / 3; justify-self: start; }
+  .steps-down .step > .amt { grid-area: 1 / 1 / 2 / 3; justify-self: end; }
+  .steps-down .step > .track { grid-area: 2 / 1 / 3 / 2; }
+  .steps-down .step > .dev { grid-area: 2 / 2 / 3 / 3; }
+  .steps-down .detail { padding: var(--s2) 0 var(--s3) var(--s3); }
+  .steps-down .txns > li { grid-template-columns: 3.25rem minmax(0, 1fr) max-content; gap: var(--s2); }
   .steps-down .step.head .legend:first-child, .steps-down .step.head > span:nth-child(2) { display: none; }
   .steps-down .step.head .amt { grid-area: 1 / 1 / 2 / 2; }
   .steps-down .step.head .dev { grid-area: 1 / 2 / 2 / 3; }

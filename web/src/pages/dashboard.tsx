@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { onLink } from "../router";
 import { usePageTitle } from "../ui";
@@ -21,20 +21,30 @@ type Summary = {
 type Averages = { period_count: number; average_income: number; average_expense: number; average_net: number; by_period: { period: string; income: number; expense: number; net: number }[] };
 type Baseline = { period_start: string; period_end: string; pay_periods: number; summary: Summary };
 type TrendRow = { id: number; period_start: string; period_end: string | null; totals: Summary["totals"] };
-type Numbers = { summary: Summary; averages: Averages; history: Summary; baseline: Baseline | null; trend: TrendRow[] };
+type Group = { group_id: number; name: string; budget_type: "spending" | "saving"; categories: string[]; budget_amount: number; actual_amount: number; pct_used: number };
+type Budget = {
+  period_info: { total_budget_spending: number; total_actual: number; total_remaining: number };
+  groups: Group[];
+  unbudgeted: { categories: { category: string; amount: number }[]; total_amount: number };
+};
+type Numbers = { summary: Summary; averages: Averages; history: Summary; baseline: Baseline | null; trend: TrendRow[]; budget: Budget | null };
+type Txn = { id: number; amount: string; description: string | null; occurred_at: string; account: string | null };
 // days: how much of the range has happened so far; live: today falls inside it
-type Range = { start: string; end: string | null; days: number; axisDays: number; label: string; live: boolean };
+type Range = { start: string; end: string | null; days: number; axisDays: number; label: string; live: boolean; payPeriod: number | null };
 
 const MONTH_DAYS = 365.25 / 12;
 
-const whole = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
-const cents = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-// rupiah amounts are almost always whole; when one isn't, show both decimals rather than ",7"
+const rupiah = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+const compact = new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 });
+// whole rupiah: cents are noise on a page read at a glance
 const money = (n: number, sign = false) => {
-  const abs = Math.round(Math.abs(n) * 100) / 100;
-  const txt = (abs % 1 ? cents : whole).format(abs).replace(/\s/g, "\u00a0");
+  const abs = Math.round(Math.abs(n));
+  const txt = rupiah.format(abs).replace(/\s/g, " ");
   return `${n < 0 && abs > 0 ? "−" : sign && n > 0 ? "+" : ""}${txt}`;
 };
+// estimates get rounded to the thousand and marked, so they don't pass for recorded amounts
+// (rounded on the size, since Math.round takes -38.5 to -38 but 38.5 to 39)
+const approx = (n: number, sign = false) => `≈ ${money(Math.sign(n) * Math.round(Math.abs(n) / 1000) * 1000, sign)}`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const day = (iso: string) => `${+iso.slice(8, 10)} ${MON[+iso.slice(5, 7) - 1]}`;
@@ -45,12 +55,12 @@ const span = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)
 
 function rangeFor(choice: string, ctx: Context, custom: { start: string; end: string }): Range {
   const now = today();
-  const fit = (start: string, end: string | null, label: string): Range => {
+  const fit = (start: string, end: string | null, label: string, payPeriod: number | null = null): Range => {
     const last = end && end < now ? end : now;
     const days = start > now ? 0 : span(start, last);
     // an open pay period has no end yet, so the chart leaves room for a usual month
     const axisDays = end ? span(start, end) : Math.max(days, Math.round(MONTH_DAYS));
-    return { start, end, days: Math.min(days, axisDays), axisDays, label, live: start <= now && (!end || end >= now) };
+    return { start, end, days: Math.min(days, axisDays), axisDays, label, live: start <= now && (!end || end >= now), payPeriod };
   };
   if (choice === "month") {
     const start = now.slice(0, 8) + "01";
@@ -59,7 +69,7 @@ function rangeFor(choice: string, ctx: Context, custom: { start: string; end: st
   }
   if (choice === "custom") return fit(custom.start, custom.end, `${day(custom.start)} – ${day(custom.end)}`);
   const p = ctx.pay_periods.find((x) => `p${x.id}` === choice) ?? ctx.current_period!;
-  return fit(p.period_start, p.period_end, p.period_end ? `${day(p.period_start)} – ${day(p.period_end)}` : `${day(p.period_start)} – today`);
+  return fit(p.period_start, p.period_end, p.period_end ? `${day(p.period_start)} – ${day(p.period_end)}` : `${day(p.period_start)} – today`, p.id);
 }
 
 function expenseByCategory(s: Summary) {
@@ -68,38 +78,71 @@ function expenseByCategory(s: Summary) {
   return m;
 }
 
-// What "usual" means: daily rates from the closed pay periods, because a salary paid on the
-// 28th makes calendar months lopsided. Without a closed period, fall back to get_averages.
-type Yardstick = { inPerDay: number; outPerDay: number; outPerDayFor: (cat: string) => number; perIn: number; perOut: number; unit: string; basis: string };
+// What "usual" means. A pay period is one pot: the salary lands once on day one and spending
+// draws it down, unevenly (rent and subscriptions go early). So income is only ever compared
+// a whole pay period at a time, and spending by day n is the average running total on day n
+// of the closed pay periods. Without a closed period, fall back to get_averages, spread evenly.
+type Usual = {
+  spentBy: (n: number) => number;
+  length: number;
+  perIn: number;
+  perOut: number;
+  catShare: (cat: string) => number;
+  unit: "pay period" | "month";
+  basis: string;
+};
 
-function yardstick(n: Numbers): Yardstick | null {
+function usualFor(n: Numbers, ctx: Context): Usual | null {
   if (n.baseline) {
-    const { period_start, period_end, pay_periods: k, summary } = n.baseline;
-    const days = span(period_start, period_end);
+    const { period_start, period_end, summary } = n.baseline;
+    const closed = ctx.pay_periods.filter((p) => p.status === "closed" && p.period_end && p.period_start >= period_start && p.period_end <= period_end);
+    const daily = new Map<string, number>();
+    for (const r of summary.by_period) if (r.type === "expense") daily.set(r.period, (daily.get(r.period) ?? 0) + Number(r.total));
+    const runs = closed.map((p) => {
+      const run = [0];
+      for (let i = 0; i < span(p.period_start, p.period_end!); i++) run.push(run[i] + (daily.get(addDays(p.period_start, i)) ?? 0));
+      return run;
+    });
+    const lens = runs.map((r) => r.length - 1).sort((a, b) => a - b);
+    const longest = lens[lens.length - 1];
+    const avg = Array.from({ length: longest + 1 }, (_, i) => runs.reduce((s, r) => s + r[Math.min(i, r.length - 1)], 0) / runs.length);
+    const perOut = avg[longest];
     const cats = expenseByCategory(summary);
     return {
-      inPerDay: summary.totals.income / days,
-      outPerDay: summary.totals.expense / days,
-      outPerDayFor: (cat) => (cats.get(cat) ?? 0) / days,
-      perIn: summary.totals.income / k,
-      perOut: summary.totals.expense / k,
+      spentBy: (d) => (d <= longest ? avg[d] : perOut + ((d - longest) * perOut) / longest),
+      length: lens[Math.floor(lens.length / 2)],
+      perIn: summary.totals.income / runs.length,
+      perOut,
+      catShare: (cat) => (cats.get(cat) ?? 0) / runs.length,
       unit: "pay period",
-      basis: `${plural(k, "closed pay period")}, ${day(period_start)} – ${day(period_end)}`,
+      basis: `${plural(runs.length, "closed pay period")}, ${day(period_start)} – ${day(period_end)}`,
     };
   }
   const a = n.averages;
   if (!a.period_count) return null;
   const cats = expenseByCategory(n.history);
   return {
-    inPerDay: a.average_income / MONTH_DAYS,
-    outPerDay: a.average_expense / MONTH_DAYS,
-    outPerDayFor: (cat) => (cats.get(cat) ?? 0) / a.period_count / MONTH_DAYS,
+    spentBy: (d) => (a.average_expense / MONTH_DAYS) * d,
+    length: Math.round(MONTH_DAYS),
     perIn: a.average_income,
     perOut: a.average_expense,
+    catShare: (cat) => (cats.get(cat) ?? 0) / a.period_count,
     unit: "month",
     basis: `${plural(a.period_count, "calendar month")} since ${monthName.format(new Date(a.by_period[0].period + "-01T00:00:00Z"))}`,
   };
 }
+
+// usual spending by day d of the range: a finished pay period is one whole pot against the
+// usual whole pot; a running one follows the pay period's own shape; anything else gets an
+// even daily rate (a calendar month cuts a pay period in two)
+const usualBy = (u: Usual, r: Range, d: number) => {
+  if (r.payPeriod && r.end && !r.live && d >= r.axisDays) return u.perOut;
+  return r.payPeriod ? u.spentBy(d) : (u.perOut / u.length) * d;
+};
+const signedPct = (ratio: number) => {
+  const p = Math.round((ratio - 1) * 100);
+  return `${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p)}%`;
+};
 
 export function DashboardPage() {
   usePageTitle("Dashboard");
@@ -109,6 +152,19 @@ export function DashboardPage() {
   const [custom, setCustom] = useState({ start: today().slice(0, 8) + "01", end: today() });
   const [nums, setNums] = useState<Numbers | null>(null);
   const [failed, setFailed] = useState(false);
+  const side = useRef<HTMLElement>(null);
+
+  // The record column is sticky. When it is taller than the window, pinning it by its top would
+  // leave its foot out of reach until the page ends, so it pins by its foot instead.
+  useEffect(() => {
+    const el = side.current;
+    if (!el) return;
+    const fit = () => el.style.setProperty("--side-top", `${Math.min(24, innerHeight - el.offsetHeight - 24)}px`);
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    addEventListener("resize", fit);
+    return () => { ro.disconnect(); removeEventListener("resize", fit); };
+  }, []);
 
   useEffect(() => {
     api<Context>("/dashboard/context")
@@ -127,10 +183,12 @@ export function DashboardPage() {
     const q = new URLSearchParams({ start_date: range.start, period: "day" });
     if (range.end) q.set("end_date", range.end);
     if (account) q.set("account", account);
+    if (range.payPeriod) q.set("pay_period_id", String(range.payPeriod));
     let live = true;
     setNums(null);
     api<Numbers>(`/dashboard/summary?${q}`)
-      .then((n) => live && setNums(n))
+      // get_budget_summary answers even for a pay period with no groups; that is no budget at all
+      .then((n) => live && setNums({ ...n, budget: n.budget?.groups.some((g) => g.budget_type === "spending") ? n.budget : null }))
       .catch(() => live && setFailed(true));
     return () => { live = false; };
   }, [range, account, badCustom]);
@@ -148,10 +206,11 @@ export function DashboardPage() {
   if (nothingYet) return <EmptyDashboard />;
 
   const current = ctx?.current_period && choice === `p${ctx.current_period.id}`;
+  const usual = nums && ctx ? usualFor(nums, ctx) : null;
 
   return (
     <div className="page dash">
-      <aside className="dash-side">
+      <aside className="dash-side" ref={side}>
         <header>
           <h1 className="display">Your money</h1>
           <p className="lede">
@@ -193,7 +252,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {!badCustom && <PeriodRecord nums={nums} ctx={ctx} range={range} account={account} />}
+        {!badCustom && <PeriodRecord nums={nums} range={range} usual={usual} account={account} />}
       </aside>
 
       {badCustom ? (
@@ -202,66 +261,67 @@ export function DashboardPage() {
         </div>
       ) : (
         <div className="dash-main" aria-busy={!nums || undefined}>
-          <Pace nums={nums} range={range} />
-          <WhereItWent nums={nums} range={range} />
+          <Pace nums={nums} range={range} usual={usual} />
+          <WhereItWent nums={nums} range={range} usual={usual} account={account} />
           <Accounts nums={nums} ctx={ctx} account={account} />
-          <Months nums={nums} />
+          <Months nums={nums} choice={choice} onPick={setChoice} />
         </div>
       )}
     </div>
   );
 }
 
-function PeriodRecord({ nums, ctx, range, account }: { nums: Numbers | null; ctx: Context | null; range: Range | null; account: string }) {
-  if (!nums || !ctx || !range) return <section className="sheet stacked"><Skeletons n={4} /></section>;
+// what is left of the pot, assuming each spending group gets at least its budget
+const leftOnBudget = (income: number, b: Budget) =>
+  income - b.groups.filter((g) => g.budget_type === "spending").reduce((s, g) => s + Math.max(g.budget_amount, g.actual_amount), 0) - b.unbudgeted.total_amount;
+
+function PeriodRecord({ nums, range, usual, account }: { nums: Numbers | null; range: Range | null; usual: Usual | null; account: string }) {
+  if (!nums || !range) return <section className="sheet stacked"><Skeletons n={4} /></section>;
   const { totals } = nums.summary;
-  const yard = yardstick(nums);
-  // a range that hasn't started has no "usual" to compare against
-  const usual = yard && range.days > 0 ? yard : null;
+  const { budget } = nums;
+  const u = range.days > 0 ? usual : null;
+  // only a pay period still running has a pay day ahead to estimate
+  const ahead = range.payPeriod && range.live && !range.end;
+  const payDay = u ? addDays(range.start, Math.max(u.length, range.days) - 1) : null;
+  const toCome = u ? Math.max(0, u.spentBy(u.length) - u.spentBy(range.days)) : 0;
+  const atPayDay = totals.net - toCome;
+
+  let key: { legend: string; figure: string; note: string | null };
+  if (ahead && u) key = { legend: `Left at pay day, ${day(payDay!)}`, figure: approx(atPayDay, true), note: `if you spend as usual from here, ${approx(toCome)} more` };
+  else if (range.payPeriod) key = { legend: range.live ? "Left so far" : "Left at pay day", figure: money(totals.net, true), note: u && u.unit === "pay period" ? `usual pay period: ${approx(u.perIn - u.perOut, true)}` : null };
+  else key = { legend: "Net", figure: money(totals.net, true), note: null };
+
   return (
     <section className="sheet stacked" aria-labelledby="period-title">
       <h2 className="title record-title" id="period-title">This period</h2>
       <div className="keyfig">
-        <span className="legend">Net</span>
-        <span className="figure">{money(totals.net, true)}</span>
-        {usual && <span className="note">usual for {range.days} days: <span className="money">{money((usual.inPerDay - usual.outPerDay) * range.days, true)}</span></span>}
+        <span className="legend">{key.legend}</span>
+        <span className="figure">{key.figure}</span>
+        {key.note && <span className="note">{key.note}</span>}
+        {ahead && budget && <span className="note">on budget: <span className="money">{approx(leftOnBudget(totals.income, budget), true)}</span></span>}
       </div>
       <table className="record figures">
         <tbody>
           <tr>
             <th scope="row">Income</th>
-            <td className="num"><span className="money">{money(totals.income)}</span>{usual && <span className="note">usual <span className="money">{money(usual.inPerDay * range.days)}</span></span>}</td>
+            <td className="num"><span className="money">{money(totals.income)}</span>{u && range.payPeriod && u.unit === "pay period" && <span className="note">usual <span className="nowrap">{approx(u.perIn)}</span></span>}</td>
           </tr>
           <tr>
-            <th scope="row">Expense</th>
-            <td className="num"><span className="money">{money(-totals.expense)}</span>{usual && <span className="note">usual <span className="money">{money(-usual.outPerDay * range.days)}</span></span>}</td>
+            <th scope="row">Spent</th>
+            <td className="num"><span className="money">{money(-totals.expense)}</span>{u && <span className="note">{range.live ? "usual by now" : "usual"} <span className="nowrap">{approx(-usualBy(u, range, range.days))}</span></span>}</td>
           </tr>
-          <tr>
-            <th scope="row">Balance now</th>
-            <td className="num"><span className="money">{money(ctx.accounts.total_balance)}</span><span className="note">{account ? "all accounts, not filtered" : plural(ctx.accounts.accounts.length, "account")}</span></td>
-          </tr>
-          {yard ? (
-            <>
-              <tr>
-                <th scope="row">Avg in</th>
-                <td className="num plain"><span className="money">{money(yard.perIn)}</span><span className="note">a {yard.unit}</span></td>
-              </tr>
-              <tr>
-                <th scope="row">Avg out</th>
-                <td className="num plain"><span className="money">{money(-yard.perOut)}</span><span className="note">a {yard.unit}, from {yard.basis}</span></td>
-              </tr>
-            </>
-          ) : (
+          {budget && (
             <tr>
-              <th scope="row">Average</th>
-              <td className="num plain">Not enough history yet</td>
+              <th scope="row">Budget</th>
+              <td className="num"><span className="money">{money(budget.period_info.total_budget_spending)}</span><span className="note">{budget.period_info.total_remaining >= 0 ? `${money(budget.period_info.total_remaining)} not spent yet` : `${money(-budget.period_info.total_remaining)} over`}</span></td>
             </tr>
           )}
         </tbody>
       </table>
       <p className="small muted record-foot">
-        {plural(totals.transaction_count, "transaction")} in this period.
-        {usual && ` "Usual" is what you typically take in and spend per day ${yard!.unit === "pay period" ? "in your closed pay periods" : "in an average month"}, times ${range.days} days.`}
+        {plural(totals.transaction_count, "transaction")} in this period{account ? ` from ${account}` : ""}.
+        {u && ` "Usual" is the average of your ${u.basis}.`}
+        {range.payPeriod && !budget && account && " Budgets cover every account, so they show with All accounts."}
       </p>
     </section>
   );
@@ -279,7 +339,13 @@ function useWidth<T extends HTMLElement>() {
   return [ref, w] as const;
 }
 
-function Pace({ nums, range }: { nums: Numbers | null; range: Range | null }) {
+// a round axis top: 1, 2 or 5 times a power of ten, so the gridlines read as plain numbers
+function niceTop(v: number) {
+  const p = 10 ** Math.floor(Math.log10(v));
+  return ([1, 2, 5, 10].find((m) => m * p >= v) ?? 10) * p;
+}
+
+function Pace({ nums, range, usual }: { nums: Numbers | null; range: Range | null; usual: Usual | null }) {
   const [box, width] = useWidth<HTMLDivElement>();
   const ready = nums && range;
   const daily = new Map<string, number>();
@@ -293,42 +359,58 @@ function Pace({ nums, range }: { nums: Numbers | null; range: Range | null }) {
       steps.push({ x: i + 1, y: run });
     }
   }
-  const yard = ready ? yardstick(nums) : null;
-  const perDay = yard?.outPerDay ?? 0;
-  const usualToday = perDay * (range?.days ?? 0);
-  const top = Math.max(run, perDay * (range?.axisDays ?? 0), 1);
+  const budgetTotal = nums?.budget?.period_info.total_budget_spending ?? 0;
+  // the line draws the shape; the reading beside it uses the same figure as the record card
+  const ref = (d: number) => (usual && range ? (range.payPeriod ? usual.spentBy(d) : usualBy(usual, range, d)) : 0);
+  const usualToday = usual && range ? usualBy(usual, range, range.days) : 0;
+  const whole = range?.payPeriod && range.end && !range.live;
+  const top = niceTop(Math.max(run, ref(range?.axisDays ?? 0), budgetTotal, 1));
   const ahead = usualToday > 0 ? run / usualToday - 1 : null;
-  const open = range?.live;
 
-  const h = 220, padL = 8, padR = 8, padT = 28, padB = 26;
+  const h = 240, padL = 52, padR = 8, padT = 28, padB = 26;
   const W = Math.max(width, 280);
   const x = (d: number) => padL + (d / (range?.axisDays || 1)) * (W - padL - padR);
   const y = (v: number) => padT + (1 - v / top) * (h - padT - padB);
   const path = steps.reduce((acc, s, i) => acc + `H${x(s.x - 1).toFixed(1)}V${y(s.y).toFixed(1)}` + (i === steps.length - 1 ? `H${x(s.x).toFixed(1)}` : ""), `M${x(0)} ${y(0)}`);
+  const usualPath = range && usual ? Array.from({ length: range.axisDays + 1 }, (_, d) => `${d ? "L" : "M"}${x(d).toFixed(1)} ${y(ref(d)).toFixed(1)}`).join("") : "";
   const tx = range ? x(range.days) : 0;
 
-  let headline = "Spending pace";
-  if (ready && ahead !== null && yard) {
+  let gap = "";
+  if (ready && ahead !== null) {
     const pct = Math.round(Math.abs(ahead) * 100);
-    headline = pct < 3 ? "Spending at your usual pace" : `Spending ${pct}% ${ahead > 0 ? "above" : "under"} your usual pace`;
+    gap = pct < 3 ? "about your usual" : `${pct}% ${ahead > 0 ? "more" : "less"} than usual`;
+    gap += whole ? " for a pay period" : ` by day ${range.days}`;
   }
 
   return (
     <section className="sheet" aria-labelledby="pace-title">
       <div className="section-head">
-        <h2 className="title" id="pace-title">{headline}</h2>
+        <h2 className="title" id="pace-title">Spending through the period</h2>
         <p className="small muted">
-          Running total of expense. Dashed line: your usual daily spend{yard?.unit === "pay period" ? " in closed pay periods" : " in an average month"}
-          {ready && perDay > 0 ? <>; by {day(addDays(range.start, range.axisDays - 1))} that's <span className="nowrap">{money(-perDay * range.axisDays)}</span>.</> : "."}
+          {ready ? <>{range.live ? "So far" : "In all"} <span className="nowrap">{money(run)}</span>{gap && <>, {gap}</>}. </> : null}
+          Dashed line: what you usually have spent by each day{usual?.unit === "pay period" && range?.payPeriod ? " of a pay period" : ""}{budgetTotal ? "; solid line: your budget" : ""}.
         </p>
       </div>
       <div ref={box} className="chart">
         {!ready || width === 0 ? <div className="skeleton" style={{ height: h }} /> : (
-          <svg width={W} height={h} role="img" aria-label={`Expense so far ${money(run)}; usual by now ${money(usualToday)}.`}>
+          <svg width={W} height={h} role="img" aria-label={`Spent ${money(run)}; usual by now ${money(usualToday)}${budgetTotal ? `; budget ${money(budgetTotal)}` : ""}.`}>
+            {[top / 2, top].map((v) => (
+              <g key={v}>
+                <line className="grid" x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} />
+                <text className="tick" x={padL - 6} y={y(v) + 4} textAnchor="end">{compact.format(v)}</text>
+              </g>
+            ))}
+            <text className="tick" x={padL - 6} y={y(0) + 4} textAnchor="end">0</text>
+            {budgetTotal > 0 && (
+              <g className="budget">
+                <line x1={padL} x2={W - padR} y1={y(budgetTotal)} y2={y(budgetTotal)} />
+                <text x={padL + 6} y={y(budgetTotal) - 6}>Budget {compact.format(budgetTotal)}</text>
+              </g>
+            )}
             <line className="axis" x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} />
-            <line className="avg" x1={x(0)} y1={y(0)} x2={x(range.axisDays)} y2={y(perDay * range.axisDays)} />
+            {usualPath && <path className="avg" d={usualPath} />}
             <path className="run" d={path} />
-            {open && (
+            {range.live && (
               <g className="today">
                 <line x1={tx} x2={tx} y1={padT - 10} y2={y(0)} />
                 <text x={tx > W - 200 ? tx - 6 : tx + 6} y={padT - 2} textAnchor={tx > W - 200 ? "end" : "start"}>Today {money(run)}</text>
@@ -343,71 +425,125 @@ function Pace({ nums, range }: { nums: Numbers | null; range: Range | null }) {
   );
 }
 
-function WhereItWent({ nums, range }: { nums: Numbers | null; range: Range | null }) {
+type Line = { key: string; label: string; amt: number; ref: number | null; cats: string[]; note?: string };
+
+function WhereItWent({ nums, range, usual, account }: { nums: Numbers | null; range: Range | null; usual: Usual | null; account: string }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [txns, setTxns] = useState<Txn[] | null>(null);
+
+  useEffect(() => { setOpen(null); setPicked(null); }, [nums]);
+  useEffect(() => {
+    if (!picked || !range) return;
+    const q = new URLSearchParams({ start_date: range.start, category: picked });
+    if (range.end) q.set("end_date", range.end);
+    if (account) q.set("account", account);
+    let live = true;
+    setTxns(null);
+    api<Txn[]>(`/dashboard/transactions?${q}`).then((t) => live && setTxns(t)).catch(() => live && setTxns([]));
+    return () => { live = false; };
+  }, [picked, range, account]);
+
   if (!nums || !range) return <section className="sheet"><h2 className="title">Where it went</h2><Skeletons n={5} /></section>;
-  const { income, expense, net } = nums.summary.totals;
-  const spent = [...expenseByCategory(nums.summary)].sort((a, b) => b[1] - a[1]);
-  const yard = range.days > 0 ? yardstick(nums) : null;
-  const compared = Boolean(yard);
-  const usual = (cat: string) => (yard ? yard.outPerDayFor(cat) * range.days : 0);
+  const spent = expenseByCategory(nums.summary);
+  const { expense } = nums.summary.totals;
+  const { budget } = nums;
+  const u = range.days > 0 ? usual : null;
+  // a category's usual by day d follows the whole pay period's shape, scaled to its share
+  const share = u ? usualBy(u, range, range.days) / u.perOut : 0;
 
-  const rows = spent.map(([cat, amt]) => ({ cat, amt, avg: usual(cat) }));
+  let lines: Line[];
+  let totalRef: number | null;
+  if (budget) {
+    lines = budget.groups
+      .filter((g) => g.budget_type === "spending")
+      .map((g) => ({ key: `g${g.group_id}`, label: g.name, amt: g.actual_amount, ref: g.budget_amount, cats: g.categories }));
+    if (budget.unbudgeted.total_amount > 0) {
+      const cats = budget.unbudgeted.categories.map((c) => c.category);
+      lines.push({ key: "none", label: "Not in a budget", amt: budget.unbudgeted.total_amount, ref: null, cats, note: cats.join(", ") });
+    }
+    totalRef = budget.period_info.total_budget_spending;
+  } else {
+    lines = [...spent].map(([cat, amt]) => ({ key: cat, label: cat, amt, ref: u && u.catShare(cat) > 0 ? u.catShare(cat) * share : null, cats: [cat] }));
+    totalRef = u ? usualBy(u, range, range.days) : null;
+  }
+  // biggest first; the leftovers that belong to no group go last whatever their size
+  lines.sort((a, b) => Number(a.key === "none") - Number(b.key === "none") || b.amt - a.amt);
 
-  // the scale runs from the lowest point the steps reach up to income, so an overspent period dips below zero
-  const lo = Math.min(0, net);
-  const hi = Math.max(income, expense, 1);
-  const pos = (v: number) => ((v - lo) / (hi - lo)) * 100;
-  const worst = rows.reduce<{ cat: string; over: number } | null>((w, r) => {
-    const over = r.avg > 0 ? r.amt / r.avg - 1 : 0;
-    return over > 0.1 && (!w || over > w.over) ? { cat: r.cat, over } : w;
-  }, null);
+  // one scale from zero for every row, so lengths compare straight down the column
+  const hi = Math.max(...lines.map((l) => Math.max(l.amt, l.ref ?? 0)), 1);
+  const pos = (v: number) => (v / hi) * 100;
+  const over = (l: Line) => (l.ref ? l.amt / l.ref - 1 : 0);
+  const worst = lines.reduce<Line | null>((w, l) => (over(l) > 0.1 && (!w || over(l) > over(w)) ? l : w), null);
+  const vs = budget ? "budget" : "usual";
 
-  let left = income;
   return (
     <section className="sheet" aria-labelledby="where-title">
       <div className="section-head">
         <h2 className="title" id="where-title">Where it went</h2>
-        {compared && <p className="small muted">Tick and %: compared with what you usually spend on it in {range.days} days.</p>}
+        <p className="small muted">
+          {budget ? "Each budget group against its budget (the tick)." : u ? `Each category against what you usually spend on it ${range.payPeriod && range.end && !range.live ? "in a pay period" : `by day ${range.days}`} (the tick).` : "Spending by category."} Open a row for the detail.
+        </p>
       </div>
-      {expense === 0 && income === 0 ? <p className="empty">Nothing recorded in this period{range.end ? "" : " yet"}.</p> : (
-        <ol className="steps-down">
+      {expense === 0 ? <p className="empty">No spending recorded in this period{range.end ? "" : " yet"}.</p> : (
+        <ol className="steps-down bars">
           <li className="step head" aria-hidden="true">
-            <span className="legend">Category</span>
+            <span className="legend">{budget ? "Group" : "Category"}</span>
             <span />
-            <span className="legend amt">This period</span>
-            <span className="legend dev">vs usual</span>
+            <span className="legend amt">Spent</span>
+            <span className="legend dev">vs {vs}</span>
           </li>
-          <li className="step">
-            <span className="legend">Income</span>
-            <span className="track"><i className="in" style={{ left: `${pos(0)}%`, width: `${pos(income) - pos(0)}%` }} /></span>
-            <span className="amt">{money(income)}</span>
-            <span className="dev" />
-          </li>
-          {rows.map((r) => {
-            const from = left;
-            left -= r.amt;
-            const dev = r.avg > 0 ? Math.round((r.amt / r.avg - 1) * 100) : null;
+          {lines.map((l) => {
+            const isOpen = open === l.key;
             return (
-              <li key={r.cat} className={`step${worst?.cat === r.cat ? " key" : ""}`}>
-                <span className="legend">{r.cat}</span>
-                <span className="track">
-                  <i className="out" style={{ left: `${pos(left)}%`, width: `${Math.max(pos(from) - pos(left), 0.4)}%` }} />
-                  {r.avg > 0 && <u style={{ left: `${Math.max(0, pos(from - r.avg))}%` }} aria-hidden="true" />}
-                </span>
-                <span className="amt">{money(-r.amt)}</span>
-                <span className="dev">{dev === null ? (compared ? "new" : "") : `${dev > 0 ? "+" : dev < 0 ? "−" : ""}${Math.abs(dev)}%`}</span>
-              </li>
+              <Fragment key={l.key}>
+                <li className={`step${worst?.key === l.key ? " key" : ""}${isOpen ? " open" : ""}`}>
+                  <span className="legend">
+                    <button type="button" className="row-toggle" aria-expanded={isOpen} onClick={() => { setOpen(isOpen ? null : l.key); setPicked(null); }}>{l.label}</button>
+                  </span>
+                  <span className="track">
+                    <i className="out" style={{ left: 0, width: `${Math.max(pos(l.amt), 0.4)}%` }} />
+                    {l.ref !== null && <u style={{ left: `${pos(l.ref)}%` }} aria-hidden="true" />}
+                  </span>
+                  <span className="amt">{money(-l.amt)}{l.ref !== null && <span className="of">of {budget ? money(l.ref) : approx(l.ref)}</span>}</span>
+                  <span className="dev">{l.ref ? signedPct(l.amt / l.ref) : u || budget ? "—" : ""}</span>
+                </li>
+                {isOpen && (
+                  <li className="detail">
+                    <ul className="cats">
+                      {l.cats.filter((c) => spent.get(c)).sort((a, b) => spent.get(b)! - spent.get(a)!).map((c) => (
+                        <li key={c}>
+                          <button type="button" className="row-toggle" aria-expanded={picked === c} onClick={() => setPicked(picked === c ? null : c)}>{c}</button>
+                          <span className="amt">{money(-spent.get(c)!)}</span>
+                          {picked === c && (
+                            <ul className="txns" aria-busy={!txns || undefined}>
+                              {!txns ? <li className="skeleton" /> : txns.map((t) => (
+                                <li key={t.id}>
+                                  <span className="when">{day(new Date(t.occurred_at).toISOString())}</span>
+                                  <span className="what">{t.description ?? "—"}</span>
+                                  <span className="amt">{money(-Number(t.amount))}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      ))}
+                      {!l.cats.some((c) => spent.get(c)) && <li className="muted">Nothing spent here yet.</li>}
+                    </ul>
+                  </li>
+                )}
+              </Fragment>
             );
           })}
           <li className="step total">
-            <span className="legend">{net < 0 ? "Overspent" : "Net left"}</span>
-            <span className="track"><i className={net < 0 ? "out" : "in"} style={{ left: `${pos(Math.min(0, net))}%`, width: `${Math.abs(pos(net) - pos(0))}%` }} /></span>
-            <span className="amt">{money(net, true)}</span>
-            <span className="dev" />
+            <span className="legend">Spent</span>
+            <span className="track" />
+            <span className="amt">{money(-expense)}{totalRef !== null && <span className="of">of {budget ? money(totalRef) : approx(totalRef)}</span>}</span>
+            <span className="dev">{totalRef ? signedPct(expense / totalRef) : ""}</span>
           </li>
         </ol>
       )}
-      {worst && <p className="small record-foot">{worst.cat} is furthest above your usual: {Math.round(worst.over * 100)}% more than an average {range.days} days.</p>}
+      {worst && <p className="small record-foot">{worst.label} is furthest over its {vs}: {Math.round(over(worst) * 100)}% more.</p>}
     </section>
   );
 }
@@ -456,13 +592,13 @@ function Accounts({ nums, ctx, account }: { nums: Numbers | null; ctx: Context |
   );
 }
 
-function Months({ nums }: { nums: Numbers | null }) {
+function Months({ nums, choice, onPick }: { nums: Numbers | null; choice: string; onPick: (c: string) => void }) {
   if (!nums) return <section className="sheet"><h2 className="title">Over time</h2><Skeletons n={4} /></section>;
   // pay periods when there are any, so a salary sits beside what it paid for; calendar months otherwise
   const byPay = nums.trend.length > 0;
   const rows = byPay
     ? nums.trend.map((p) => ({
-        key: String(p.id),
+        key: `p${p.id}`,
         label: p.period_end ? `${day(p.period_start)} – ${day(p.period_end)}` : `${day(p.period_start)} – today`,
         income: p.totals.income,
         expense: p.totals.expense,
@@ -476,15 +612,17 @@ function Months({ nums }: { nums: Numbers | null }) {
     <section className="sheet" aria-labelledby="months-title">
       <div className="section-head">
         <h2 className="title" id="months-title">{byPay ? "Pay period by pay period" : "Month by month"}</h2>
-        <p className="small muted">{byPay ? "Your pay periods, newest first." : "Calendar months, newest first."}</p>
+        <p className="small muted">{byPay ? "Your pay periods, newest first. Pick one to see it above." : "Calendar months, newest first."}</p>
       </div>
       <div className="table-wrap">
         <table className="record cards-sm labelled months">
           <thead><tr><th scope="col" className="legend">{unit}</th><th scope="col" className="legend">In and out</th><th scope="col" className="legend num">Net</th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.key}>
-                <td data-label={unit}>{r.label}</td>
+              <tr key={r.key} className={choice === r.key ? "picked" : undefined}>
+                <td data-label={unit}>
+                  {byPay ? <button type="button" className="row-toggle" aria-current={choice === r.key || undefined} onClick={() => onPick(r.key)}>{r.label}</button> : r.label}
+                </td>
                 <td data-label="In and out" className="plain">
                   <span className="pair"><i className="in" style={{ width: `${(r.income / top) * 100}%` }} /><span>{money(r.income)}</span></span>
                   <span className="pair"><i className="out" style={{ width: `${(r.expense / top) * 100}%` }} /><span>{money(-r.expense)}</span></span>

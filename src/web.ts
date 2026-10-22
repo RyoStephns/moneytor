@@ -14,7 +14,15 @@ import {
 } from "./auth.js";
 import { config } from "./config.js";
 import type { MysqlOAuthProvider } from "./oauthProvider.js";
-import { getAccountOverview, getAverages, getCurrentPeriod, getFinanceSummary, listPayPeriods } from "./repository.js";
+import {
+  getAccountOverview,
+  getAverages,
+  getBudgetSummary,
+  getCurrentPeriod,
+  getFinanceSummary,
+  listPayPeriods,
+  listTransactions,
+} from "./repository.js";
 import { endSession, loadSession, requireCsrf, requireSession, startSession } from "./session.js";
 
 const email = z.string().trim().max(255).pipe(z.email({ error: "Enter a valid email address." }));
@@ -29,6 +37,13 @@ const dashboardQuery = z.object({
   end_date: day.optional(),
   account: z.string().trim().min(1).max(120).optional(),
   period: z.enum(["day", "month"]).default("month"),
+  pay_period_id: z.coerce.number().int().positive().optional(),
+});
+const categoryQuery = z.object({
+  start_date: day.optional(),
+  end_date: day.optional(),
+  account: z.string().trim().min(1).max(120).optional(),
+  category: z.string().trim().min(1).max(120),
 });
 
 const FAIL_WINDOW_MS = 15 * 60 * 1000;
@@ -154,11 +169,16 @@ export function createWebApi(provider: MysqlOAuthProvider) {
     // Calendar months split a salary paid on the 28th from what it pays for, so the page
     // reads "usual" off the closed pay periods and shows its trend per pay period.
     // Each piece is get_finance_summary over that period's dates.
-    const span = (start: string, end: string | null) => ({ start_date: start, end_date: end ?? undefined, account: q.account, period: "month" as const });
+    const span = (start: string, end: string | null, period: "day" | "month" = "month") =>
+      ({ start_date: start, end_date: end ?? undefined, account: q.account, period });
     const closed = periods.filter((p) => p.status === "closed" && p.period_end);
-    const [baseline, trend] = await Promise.all([
+    // Budgets cover every account, so a filtered view has nothing fair to compare against.
+    // The category totals are the same sums get_budget_summary would make from the transactions.
+    const budgeted = q.pay_period_id && !q.account && periods.some((p) => p.id === q.pay_period_id);
+    const [baseline, trend, budget] = await Promise.all([
+      // by day, so the page can see how spending usually builds up through a pay period
       closed.length
-        ? getFinanceSummary(userId, span(closed[closed.length - 1].period_start, closed[0].period_end)).then((s) => ({
+        ? getFinanceSummary(userId, span(closed[closed.length - 1].period_start, closed[0].period_end, "day")).then((s) => ({
             period_start: closed[closed.length - 1].period_start,
             period_end: closed[0].period_end!,
             pay_periods: closed.length,
@@ -171,9 +191,24 @@ export function createWebApi(provider: MysqlOAuthProvider) {
         period_end: p.period_end,
         totals: (await getFinanceSummary(userId, span(p.period_start, p.period_end))).totals,
       }))),
+      budgeted
+        ? getBudgetSummary(userId, q.pay_period_id!, summary.by_category.map((r) => ({
+            category: r.category,
+            type: r.type,
+            amount: Number(r.total),
+            occurred_at: q.start_date ?? "",
+          })))
+        : null,
     ]);
     res.set("Cache-Control", "no-store");
-    res.json({ summary, averages, history, baseline, trend });
+    res.json({ summary, averages, history, baseline, trend, budget });
+  });
+
+  api.get("/dashboard/transactions", async (req, res) => {
+    const userId = requireSession(req).user.id;
+    const q = categoryQuery.parse(req.query);
+    res.set("Cache-Control", "no-store");
+    res.json(await listTransactions(userId, { ...q, type: "expense", limit: 200 }));
   });
 
   api.get("/oauth/requests/:id", async (req, res) => {
