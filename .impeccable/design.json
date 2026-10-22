@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-22T12:00:00+07:00",
+  "generatedAt": "2026-10-22T18:00:00+07:00",
   "title": "Design System: Moneytor",
   "extensions": {
     "colorMeta": {
@@ -218,6 +218,11 @@
         "name": "compact",
         "value": "max-width: 599px",
         "purpose": "Stacked records, full-width actions, text value segment under label, top bar wraps."
+      },
+      {
+        "name": "dashboard-two-column",
+        "value": "min-width: 840px",
+        "purpose": "Dashboard splits into a sticky 340-400px record column beside the working sheets; one column below."
       }
     ],
     "focus": {
@@ -271,7 +276,7 @@
       "kind": "nav",
       "refersTo": "topbar",
       "description": "Ink strip with ramp-strip wordmark; current page underlined in magenta.",
-      "html": "<header class=\"ds-topbar\"><a class=\"ds-wordmark\" href=\"#\"><span class=\"ds-ramp\"><i style=\"background:oklch(0.17 0 0)\"></i><i style=\"background:oklch(0.25 0 0)\"></i><i style=\"background:oklch(0.33 0 0)\"></i><i style=\"background:oklch(0.41 0 0)\"></i><i style=\"background:oklch(0.5 0 0)\"></i><i style=\"background:oklch(0.59 0 0)\"></i><i style=\"background:oklch(0.68 0 0)\"></i><i style=\"background:oklch(0.77 0 0)\"></i><i style=\"background:oklch(0.86 0 0)\"></i><i style=\"background:oklch(0.935 0 0)\"></i><i style=\"background:oklch(0.985 0 0)\"></i></span>Moneytor</a><nav><a href=\"#\" aria-current=\"page\">Home</a><a href=\"#\">Invites &amp; people</a></nav></header>",
+      "html": "<header class=\"ds-topbar\"><a class=\"ds-wordmark\" href=\"#\"><span class=\"ds-ramp\"><i style=\"background:oklch(0.17 0 0)\"></i><i style=\"background:oklch(0.25 0 0)\"></i><i style=\"background:oklch(0.33 0 0)\"></i><i style=\"background:oklch(0.41 0 0)\"></i><i style=\"background:oklch(0.5 0 0)\"></i><i style=\"background:oklch(0.59 0 0)\"></i><i style=\"background:oklch(0.68 0 0)\"></i><i style=\"background:oklch(0.77 0 0)\"></i><i style=\"background:oklch(0.86 0 0)\"></i><i style=\"background:oklch(0.935 0 0)\"></i><i style=\"background:oklch(0.985 0 0)\"></i></span>Moneytor</a><nav><a href=\"#\" aria-current=\"page\">Dashboard</a><a href=\"#\">Account</a><a href=\"#\">Invites &amp; people</a></nav></header>",
       "css": ".ds-topbar { display: flex; align-items: center; gap: 24px; min-height: 60px; padding: 12px 32px; background: oklch(0.17 0 0); color: oklch(0.985 0 0); font-family: 'Archivo Variable', Archivo, system-ui, sans-serif; } .ds-wordmark { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; font-stretch: 62%; font-weight: 700; font-size: 1.375rem; letter-spacing: 0.04em; text-transform: uppercase; } .ds-ramp { display: flex; height: 12px; border: 1px solid oklch(0.68 0 0); } .ds-ramp i { width: 9px; } .ds-topbar nav { margin-left: auto; display: flex; gap: 16px; font-size: 0.9375rem; } .ds-topbar nav a { color: oklch(0.86 0 0); text-decoration: none; padding: 4px 0; border-bottom: 2px solid transparent; } .ds-topbar nav a:hover { color: oklch(0.985 0 0); } .ds-topbar nav a[aria-current='page'] { color: oklch(0.985 0 0); border-bottom-color: oklch(0.52 0.23 350); } .ds-topbar a:focus-visible { outline: 2px solid oklch(0.52 0.23 350); outline-offset: 2px; }"
     },
     {
@@ -297,11 +302,27 @@
       "description": "Plain warning above the actions when the return host is unknown.",
       "html": "<div class=\"ds-warn\" role=\"note\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"square\" aria-hidden=\"true\"><path d=\"M12 3l10 18H2L12 3zM12 10v5M12 18v.01\"/></svg><div><strong>Check this address before you approve</strong>An unfamiliar address could be someone trying to get into your account. When in doubt, deny.</div></div>",
       "css": ".ds-warn { display: flex; gap: 12px; align-items: flex-start; padding: 16px 24px; border: 2px solid oklch(0.52 0.23 350); background: oklch(0.93 0.05 350); color: oklch(0.17 0 0); font: 400 1rem/1.5 'Archivo Variable', Archivo, system-ui, sans-serif; } .ds-warn svg { flex: none; color: oklch(0.45 0.2 350); } .ds-warn strong { display: block; }"
+    },
+    {
+      "name": "Key Figure",
+      "kind": "card",
+      "refersTo": "key-figure",
+      "description": "The one number read first: tint block under a 2px ink rule, magenta-ink legend and usual note, figure at 650 / 75% width / 2.125rem.",
+      "html": "<div class=\"ds-keyfig\"><span class=\"ds-legend\">Net</span><span class=\"ds-figure\">+Rp&nbsp;5.370.288,96</span><span class=\"ds-note\">usual for 24 days: +Rp&nbsp;1.387.740,43</span></div>",
+      "css": ".ds-keyfig { padding: 12px; border-top: 2px solid oklch(0.17 0 0); background: oklch(0.93 0.05 350); color: oklch(0.17 0 0); font-family: 'Archivo Variable', Archivo, system-ui, sans-serif; font-variant-numeric: tabular-nums; } .ds-legend { font-stretch: 75%; font-weight: 650; font-size: 0.8125rem; letter-spacing: 0.09em; text-transform: uppercase; color: oklch(0.45 0.2 350); } .ds-figure { display: block; margin-top: 4px; font-stretch: 75%; font-weight: 650; font-size: 2.125rem; line-height: 1.05; letter-spacing: 0.005em; white-space: nowrap; } .ds-note { display: block; margin-top: 4px; font-size: 0.9375rem; color: oklch(0.45 0.2 350); }"
+    },
+    {
+      "name": "Step-down List",
+      "kind": "custom",
+      "refersTo": "bar-out",
+      "description": "Income as a solid ink bar, each category a hollow bar stepping it down on one shared scale (subgrid), 2px ink usual tick, legend-voice header, magenta tint on the category furthest over its usual.",
+      "html": "<ol class=\"ds-steps\"><li class=\"ds-step ds-head\"><span class=\"ds-lg\">Category</span><span></span><span class=\"ds-lg ds-amt\">This period</span><span class=\"ds-lg ds-dev\">vs usual</span></li><li class=\"ds-step\"><span class=\"ds-lg\">Income</span><span class=\"ds-track\"><i class=\"ds-in\" style=\"left:0;width:100%\"></i></span><span class=\"ds-amt\">Rp 9.658.122</span><span class=\"ds-dev\"></span></li><li class=\"ds-step ds-key\"><span class=\"ds-lg\">Groceries</span><span class=\"ds-track\"><i class=\"ds-out\" style=\"left:82%;width:18%\"></i><u style=\"left:84.5%\"></u></span><span class=\"ds-amt\">−Rp 1.759.251</span><span class=\"ds-dev\">+18%</span></li><li class=\"ds-step\"><span class=\"ds-lg\">Transport</span><span class=\"ds-track\"><i class=\"ds-out\" style=\"left:75.6%;width:6.4%\"></i><u style=\"left:70%\"></u></span><span class=\"ds-amt\">−Rp 621.006</span><span class=\"ds-dev\">−45%</span></li><li class=\"ds-step ds-total\"><span class=\"ds-lg\">Net left</span><span class=\"ds-track\"><i class=\"ds-in\" style=\"left:0;width:56%\"></i></span><span class=\"ds-amt\">+Rp 5.370.289</span><span class=\"ds-dev\"></span></li></ol>",
+      "css": ".ds-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) max-content 5.5rem; column-gap: 12px; font: 400 1rem/1.5 'Archivo Variable', Archivo, system-ui, sans-serif; font-variant-numeric: tabular-nums; color: oklch(0.17 0 0); } .ds-step { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 8px 12px; border-bottom: 1px solid oklch(0.77 0 0); } .ds-head { padding-top: 0; border-bottom: 2px solid oklch(0.17 0 0); } .ds-lg { font-stretch: 75%; font-weight: 650; font-size: 0.8125rem; letter-spacing: 0.09em; text-transform: uppercase; color: oklch(0.41 0 0); } .ds-track { position: relative; height: 20px; } .ds-track i { position: absolute; top: 0; bottom: 0; } .ds-in { background: oklch(0.17 0 0); } .ds-out { background: oklch(0.935 0 0); border: 1.5px solid oklch(0.17 0 0); } .ds-track u { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: oklch(0.17 0 0); } .ds-amt { text-align: right; font-weight: 600; white-space: nowrap; } .ds-dev { text-align: right; font-size: 0.9375rem; font-weight: 600; color: oklch(0.33 0 0); } .ds-key { background: oklch(0.93 0.05 350); } .ds-key .ds-lg, .ds-key .ds-dev { color: oklch(0.45 0.2 350); } .ds-total { border-top: 1px solid oklch(0.17 0 0); } .ds-total .ds-amt { font-size: 1.1875rem; font-weight: 700; }"
     }
   ],
   "narrative": {
     "northStar": "The Exposure Record",
-    "overview": "Every screen is a printer's exposure record. Whatever is being granted or measured sits as a ruled entry on a record card, laid over one fixed neutral ramp. The ground is achromatic grey, never cream. Ink sits at the dark end of an eleven-step zone ramp, and every neutral on the page comes from that ramp. The wordmark carries the ramp as a strip of eleven swatches, so the scale is the identity.\n\nOne dichroic magenta marks the decision in focus and nothing else: the active nav item, the key row of a record, and the primary button's consequence segment while it applies. Titles and legends use condensed, tracked capitals cut from the same variable family as the body, and every figure is set in tabular numerals. Corners are square throughout. Depth is one soft sheet shadow plus a tracing sheet offset behind the record card.\n\nHatching is the system's second signal, used where a colour accent would be ambiguous. It means conflict, error or held back (an unknown return host, a revoked or expired invite, an invalid field, a revoke action). It never decorates and never encodes a balance.",
+    "overview": "Every screen is a printer's exposure record. Whatever is being granted or measured sits as a ruled entry on a record card, laid over one fixed neutral ramp. The ground is achromatic grey, never cream. Ink sits at the dark end of an eleven-step zone ramp, and every neutral on the page comes from that ramp. The wordmark carries the ramp as a strip of eleven swatches, so the scale is the identity.\n\nOne dichroic magenta marks the decision in focus and nothing else: the active nav item, the key row of a record, the primary button's consequence segment while it applies, and on the dashboard the net key figure, today on the pace chart, and the one category furthest over its usual. Titles and legends use condensed, tracked capitals cut from the same variable family as the body, and every figure is set in tabular numerals. Corners are square throughout. Depth is one soft sheet shadow plus a tracing sheet offset behind the record card.\n\nHatching is the system's second signal, used where a colour accent would be ambiguous. It means conflict, error or held back (an unknown return host, a revoked or expired invite, an invalid field, a revoke action). It never decorates and never encodes a balance.",
     "keyCharacteristics": [
       "Achromatic zone ramp (chroma 0) as the only neutral scale.",
       "One accent, magenta, reserved for the decision in focus.",
@@ -319,6 +340,11 @@
       {
         "name": "The No Red Rule",
         "body": "Errors are carried by ink and structure: a 2px ink frame, the crosshatch mark, and the \"Error:\" prefix (in the document title and as visually hidden text before each inline message). Never red, and never magenta alone.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink In, Hollow Out Rule",
+        "body": "In every chart, money in is a solid ink bar and money out is a hollow bar (ground fill inside a 1.5px ink frame). The usual amount is a 2px ink tick or a dashed secondary-ink line. Over and under read as distance on one scale, never as a colour.",
         "section": "colors"
       },
       {
@@ -344,7 +370,8 @@
     ],
     "dos": [
       "Do take every neutral from the zone ramp (`zone-0`–`zone-10`); add no other greys.",
-      "Do keep magenta to the decision in focus: active nav, key row, busy value segment, focus ring, warning notice.",
+      "Do keep magenta to the decision in focus: active nav, key row, key figure, busy value segment, focus ring, warning notice, the today rule on a pace chart, and the one category furthest over its usual.",
+      "Do draw money in as solid ink and money out as hollow ink-framed bars on one shared scale, with the usual as a 2px ink tick or a dashed secondary-ink line.",
       "Do give each record card its own condensed-caps title, and set every row and column label in the legend voice.",
       "Do carry errors with an ink frame, the crosshatch mark and an \"Error:\" prefix.",
       "Do put the consequence of a primary action in its value segment, and fill the segment magenta only while `aria-busy` is set.",

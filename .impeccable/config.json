@@ -11,6 +11,96 @@
         ],
         "createdAt": "2026-10-22T04:11:17.675Z",
         "reason": "Claude, from the direction contract in .impeccable/surfaces/web-src.md: hatching encodes conflict and held-back states only (unknown redirect host, revoked/expired invites), never decoration"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/*.html"
+        ],
+        "createdAt": "2026-10-22T05:21:29.469Z",
+        "reason": "Claude: decision-round sketches of the unchosen directions (Commuter Line, Annual Report Grid, category standard); they carry those directions' own fonts and are not shipped UI"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/*.html"
+        ],
+        "createdAt": "2026-10-22T05:21:44.734Z",
+        "reason": "Claude: decision-round sketches of the unchosen directions follow those directions' own palettes and shapes, not DESIGN.md; not shipped UI"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/*.html"
+        ],
+        "createdAt": "2026-10-22T05:21:44.744Z",
+        "reason": "Claude: decision-round sketches of the unchosen directions follow those directions' own palettes and shapes, not DESIGN.md; not shipped UI"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/*.html"
+        ],
+        "createdAt": "2026-10-22T05:21:44.754Z",
+        "reason": "Claude: decision-round sketches of the unchosen directions follow those directions' own palettes and shapes, not DESIGN.md; not shipped UI"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/deviation.html"
+        ],
+        "createdAt": "2026-10-22T06:31:47.764Z",
+        "reason": "builder (Claude): decision-round HTML sketch, gitignored under .impeccable/mocks, drawn as a skeleton on the decision page and never shipped"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/pace.html"
+        ],
+        "createdAt": "2026-10-22T06:31:47.779Z",
+        "reason": "builder (Claude): decision-round HTML sketch, gitignored under .impeccable/mocks, drawn as a skeleton on the decision page and never shipped"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/waterfall.html"
+        ],
+        "createdAt": "2026-10-22T06:31:47.790Z",
+        "reason": "builder (Claude): decision-round HTML sketch, gitignored under .impeccable/mocks, drawn as a skeleton on the decision page and never shipped"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/combined-column.html"
+        ],
+        "createdAt": "2026-10-22T06:31:47.801Z",
+        "reason": "builder (Claude): decision-round HTML sketch, gitignored under .impeccable/mocks, drawn as a skeleton on the decision page and never shipped"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/combined-panes.html"
+        ],
+        "createdAt": "2026-10-22T06:31:47.813Z",
+        "reason": "builder (Claude): decision-round HTML sketch, gitignored under .impeccable/mocks, drawn as a skeleton on the decision page and never shipped"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/combined-statement.html"
+        ],
+        "createdAt": "2026-10-22T06:31:47.825Z",
+        "reason": "builder (Claude): decision-round HTML sketch, gitignored under .impeccable/mocks, drawn as a skeleton on the decision page and never shipped"
       }
     ]
   }

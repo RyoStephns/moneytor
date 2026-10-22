@@ -71,7 +71,7 @@ export function SignupPage({ session, onSession, code }: SessionProps & { code: 
         <header><h1 className="display">You're signed in</h1></header>
         <div className="sheet">
           <p>You're already signed in as <strong>{session.user.email}</strong>. To create a different account, sign out first.</p>
-          <div className="after"><a href="/" onClick={onLink("/")}>Go to your account</a></div>
+          <div className="after"><a href="/" onClick={onLink("/")}>Go to your dashboard</a></div>
         </div>
       </div>
     );

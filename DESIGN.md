@@ -156,6 +156,15 @@ components:
     backgroundColor: "{colors.zone-10}"
     textColor: "{colors.zone-0}"
     padding: "16px 24px"
+  key-figure:
+    backgroundColor: "{colors.magenta-tint}"
+    textColor: "{colors.zone-0}"
+    padding: "12px"
+  bar-in:
+    backgroundColor: "{colors.zone-0}"
+  bar-out:
+    backgroundColor: "{colors.zone-9}"
+    textColor: "{colors.zone-0}"
 ---
 
 # Design System: Moneytor
@@ -168,7 +177,7 @@ Process, usability checks, form and consent rules, number typesetting and breakp
 
 Every screen is a printer's exposure record. Whatever is being granted or measured sits as a ruled entry on a record card, laid over one fixed neutral ramp. The ground is achromatic grey, never cream. Ink sits at the dark end of an eleven-step zone ramp, and every neutral on the page comes from that ramp. The wordmark carries the ramp as a strip of eleven swatches, so the scale is the identity.
 
-One dichroic magenta marks the decision in focus and nothing else: the active nav item, the key row of a record, and the primary button's consequence segment while it applies. Titles and legends use condensed, tracked capitals cut from the same variable family as the body, and every figure is set in tabular numerals. Corners are square throughout. Depth is one soft sheet shadow plus a tracing sheet offset behind the record card.
+One dichroic magenta marks the decision in focus and nothing else: the active nav item, the key row of a record, the primary button's consequence segment while it applies, and on the dashboard the net key figure, today on the pace chart, and the one category furthest over its usual. Titles and legends use condensed, tracked capitals cut from the same variable family as the body, and every figure is set in tabular numerals. Corners are square throughout. Depth is one soft sheet shadow plus a tracing sheet offset behind the record card.
 
 Hatching is the system's second signal, used where a colour accent would be ambiguous. It means conflict, error or held back (an unknown return host, a revoked or expired invite, an invalid field, a revoke action). It never decorates and never encodes a balance.
 
@@ -185,20 +194,22 @@ Hatching is the system's second signal, used where a colour accent would be ambi
 A grey zone ramp with no chroma, one magenta for the decision in focus, and no other hue.
 
 ### Primary
-- **Dichroic Magenta** (`magenta`): the decision in focus. Used for the active nav underline, the focus ring (2px, 2px offset), the input caret, the busy fill of the primary button's value segment, the border of the warning notice, and the border of a conflict hatch. It is never used to fill a resting button or a large area.
-- **Magenta Ink** (`magenta-ink`): text on magenta tint. Used for the key row's legend and the warning notice's icon.
-- **Magenta Tint** (`magenta-tint`): background of the key row, the conflict row, the warning notice and text selection.
+- **Dichroic Magenta** (`magenta`): the decision in focus. Used for the active nav underline, the focus ring (2px, 2px offset), the input caret, the busy fill of the primary button's value segment, the border of the warning notice, the border of a conflict hatch, and the 2px today rule on the pace chart. It is never used to fill a resting button or a large area.
+- **Magenta Ink** (`magenta-ink`): text on magenta tint, and the today reading on the pace chart. Used for the key row's legend, the key figure's legend and usual note, the worst category's legend and deviation, and the warning notice's icon.
+- **Magenta Tint** (`magenta-tint`): background of the key row, the key figure block, the worst-category step, the conflict row, the warning notice and text selection.
+
+On the dashboard, each sheet carries at most one magenta mark: the net key figure on the period record, the today rule on the pace sheet, and on the step-down only the category furthest over its usual (more than 10% over; none when nothing is).
 
 ### Neutral
 The eleven zone steps are evenly spaced in OKLCH lightness from 0.17 to 0.985. Semantic aliases map onto them:
-- **Ink** (`zone-0`): body text, primary button fill, top bar, the head rule of a record, error frames and marks.
+- **Ink** (`zone-0`): body text, primary button fill, top bar, the head rule of a record, error frames and marks, money-in bars, the frame of money-out bars, the usual tick, and the pace line and its baseline.
 - **Hover Ink** (`zone-1`): primary button hover.
 - **Strong Rule** (`zone-2`): record card border, input border, quiet button border, lede text.
-- **Secondary Ink** (`zone-3`): row legends, hints, muted copy, revoked and expired states.
+- **Secondary Ink** (`zone-3`): row legends, hints, muted copy, revoked and expired states, the dashed pace reference and chart axis dates.
 - **Placeholder** (`zone-4`): input placeholder only.
 - **Hairline** (`zone-7`): row rules, section dividers, tracing sheet border.
 - **Shimmer** (`zone-8`): skeleton loading, nav link text on the top bar.
-- **Ground** (`zone-9`): page background, secondary hover, reveal toggle.
+- **Ground** (`zone-9`): page background, secondary hover, reveal toggle, the fill inside hollow money-out bars.
 - **Sheet** (`zone-10`): record card paper, inputs, text on ink.
 - `zone-5` and `zone-6` appear only in the ramp strip and the scrollbar thumb.
 
@@ -206,6 +217,8 @@ The eleven zone steps are evenly spaced in OKLCH lightness from 0.17 to 0.985. S
 **The One Accent Rule.** Magenta is the only hue. It marks what the person is deciding right now: the active page, the key row, the busy primary. If two things on a screen compete for magenta, one of them is wrong.
 
 **The No Red Rule.** Errors are carried by ink and structure: a 2px ink frame, the crosshatch mark, and the "Error:" prefix (in the document title and as visually hidden text before each inline message). Never red, and never magenta alone.
+
+**The Ink In, Hollow Out Rule.** In every chart, money in is a solid ink bar and money out is a hollow bar (ground fill inside a 1.5px ink frame). The usual amount is a 2px ink tick or a dashed secondary-ink line. Over and under read as distance on one scale, never as a colour.
 
 **The Hatch Means Trouble Rule.** Hatching (single 135° lines) means held back: revoked or expired invites, the revoke button on hover. Crosshatching (135° plus 45°) means conflict or error: the unknown-host row, the invalid field band, the error mark and the summary mark. Neither ever fills a figure, a balance or a decoration.
 
@@ -231,6 +244,8 @@ The eleven zone steps are evenly spaced in OKLCH lightness from 0.17 to 0.985. S
 - **Field label** (650, 1rem, sentence case): form labels stay in sentence case and are never set in legend caps.
 - **Mono code** (JetBrains Mono 400, 1.125rem): the one-time invite code in the fresh-code block, set large enough to read back and copy by eye. Elsewhere mono stays at 0.92em of its context.
 - **Step numerals** (700, 62% width, 1.4375rem): ordered steps whose numbers carry a real sequence.
+- **Key figure** (650, 75% width, 2.125rem / 1.05, 0.005em tracking, never wraps): the one number read first, the net in the dashboard's key figure block. Signed with a true minus or plus.
+- **Chart labels** (600, 0.8125rem, secondary ink, sentence case): axis dates on the pace chart. The today reading uses 650 in magenta ink.
 
 ### Named Rules
 **The Legend Voice Rule.** Every label that names a record field (row headers, column heads, the `data-label` on phone cards) uses the legend voice: condensed, tracked, uppercase, secondary ink. Values are never set in this voice.
@@ -239,7 +254,7 @@ The eleven zone steps are evenly spaced in OKLCH lightness from 0.17 to 0.985. S
 
 ## Layout
 
-Single column, centred. Pages are `min(100% − 48px, 760px)` wide, and admin-style pages widen to 1080px. Vertical page margins are 64px (32px top on phones). The page header sits 32px above the first sheet, and stacked sheets are 32px apart. Spacing uses an 8-step scale from 4px to 64px (`s1`–`s8`); inside forms, fields are 24px apart and label, hint and error are 8px apart.
+Single column, centred. Pages are `min(100% − 48px, 760px)` wide, admin-style pages widen to 1080px, and the dashboard widens to 1240px (below). Vertical page margins are 64px (32px top on phones). The page header sits 32px above the first sheet, and stacked sheets are 32px apart. Spacing uses an 8-step scale from 4px to 64px (`s1`–`s8`); inside forms, fields are 24px apart and label, hint and error are 8px apart.
 
 Breakpoints follow the framework's compact class at 600px. Under 600px:
 - **Key-value records** (`stack-sm`) become one column, with the legend above its value.
@@ -248,7 +263,11 @@ Breakpoints follow the framework's compact class at 600px. Under 600px:
 - The top bar wraps and drops the signed-in email.
 - Card padding shrinks to 24px × 16px, and the tracing-sheet offset shrinks to 6px × 8px.
 
-Above 600px, wide tables keep full columns inside a horizontal scroller with a 560px minimum.
+Above 600px, wide tables keep full columns inside a horizontal scroller with a 560px minimum (520px for the month-by-month table).
+
+**Dashboard: the record beside its working sheets.** The dashboard page is `min(100% − 48px, 1240px)` wide. From 840px up it is two columns: a record column of 340–400px and the working sheets in the remaining width, with a 48px column gap and 32px row gap. The record column holds the page display, lede, filter fields and the period record card, and is sticky 24px from the top while the sheets scroll. The working sheets stack 32px apart. Below 840px it is one column in the same order, record first. Under 600px the page is `100% − 32px` wide with a 32px top margin.
+
+On phones, the dashboard's **labelled tables** (`cards-sm labelled`) hold several amounts per row, so every amount keeps its legend in the 6.5rem column instead of dropping it. A cell holding paired bars takes the full width without a legend. Empty cells in a total row are hidden, and the total row is headed by a 1px ink rule. The step-down list re-flows to two lines per step: legend and amount share the first line, and the track sits beside a fixed 4.75rem deviation column on the second.
 
 ## Elevation & Depth
 
@@ -293,7 +312,19 @@ A ruled table under a 2px ink head rule, with 12px cell padding and 1px hairline
 - **Error:** a 2px ink frame plus a 14px crosshatch band on the trailing edge of the input. The message sits above the input, after a 14px crosshatched square mark, in 650 ink, with a visually hidden "Error:" prefix. On submit, an **error summary** (2px ink frame, crosshatched 18px mark before "There is a problem", linked list of messages) takes focus at the top, following the GOV.UK pattern in the framework.
 
 ### Navigation
-The top bar is an ink strip, at least 60px tall. On the left is the wordmark: the eleven-swatch ramp strip, then MONEYTOR in 700 at 62% width, tracked caps. Nav links sit on the right at 0.9375rem in `zone-8`. Hover and the current page go to `zone-10`, and the current page also gets a 2px magenta underline. Sign out is a link-styled button. On phones the bar wraps and hides the email.
+The top bar is an ink strip, at least 60px tall. On the left is the wordmark: the eleven-swatch ramp strip, then MONEYTOR in 700 at 62% width, tracked caps. Nav links (Dashboard, Account, and Invites & people for the owner) sit on the right at 0.9375rem in `zone-8`. Hover and the current page go to `zone-10`, and the current page also gets a 2px magenta underline. Sign out is a link-styled button. On phones the bar wraps and hides the email.
+
+### Key Figure
+The one number read first, set above the record table at full card width. A block on magenta tint under a 2px ink head rule, padded 12px: the legend (NET) in magenta ink, the figure in the key-figure voice in ink, and a small note in magenta ink giving the usual amount for the same number of days. The record table under it starts with a 1px hairline instead of its own ink head rule, and its row headers narrow to 30%.
+
+### Step-down List
+The dashboard's signature. Income at the top as a solid ink bar; each expense category below it is a hollow bar that eats into what is left, and the last row (Net left, or Overspent) shows what remains. Every step sits on the list's own columns through a subgrid (7.5rem legend, track, amount, 5.5rem deviation), so all tracks share one width and therefore one scale; the scale runs from the lowest point reached (below zero when overspent) up to income. Tracks are 20px tall. The usual amount for each category is a 2px ink tick extending 5px above and below the track. A header row (CATEGORY, THIS PERIOD, VS USUAL) is set in the legend voice over a 2px ink rule; steps are separated by hairlines, and the total step has a 1px ink rule above and its amount at 700, 1.1875rem. Amounts are 600 and right-aligned; deviations are 600 at 0.9375rem in strong-rule grey. The category furthest over its usual takes the magenta tint with its legend and deviation in magenta ink, and a footnote names it in words.
+
+### Pace Chart
+A 220px SVG of cumulative expense as a step line (2.5px ink, mitred joins) over a 2px ink baseline. The derived reference (the average month spread evenly) is a dashed 2px secondary-ink line (6px dash, 6px gap), and the sheet's note says it is derived. While the range includes today, a 2px magenta rule marks today, with its reading (Today and the running total) in magenta ink at its top, flipped to the left near the right edge. Start and end dates sit under the baseline; an open period's end is marked "(est.)". The sheet's title states the reading in words (for example SPENDING 21% UNDER YOUR USUAL PACE).
+
+### Month-by-month Bars
+Each month row pairs two 12px bars on one scale shared across the visible months: a solid ink bar for in above a hollow bar for out, each followed by its amount in a 9.5rem right-aligned column. Net sits in its own column. Bars keep a 2px minimum width so a tiny month still shows a mark.
 
 ### Notices
 A plain notice is framed by a 1px strong rule on sheet paper. A **warning notice** (used for the unknown return host) has a 2px magenta border on magenta tint, with an alert icon in magenta ink and a bold lead line. It sits above the action row, never as a footnote.
@@ -305,7 +336,8 @@ A one-time secret appears in a block with a 2px ink frame on sheet paper. The co
 
 ### Do:
 - **Do** take every neutral from the zone ramp (`zone-0`–`zone-10`); add no other greys.
-- **Do** keep magenta to the decision in focus: active nav, key row, busy value segment, focus ring, warning notice.
+- **Do** keep magenta to the decision in focus: active nav, key row, key figure, busy value segment, focus ring, warning notice, the today rule on a pace chart, and the one category furthest over its usual.
+- **Do** draw money in as solid ink and money out as hollow ink-framed bars on one shared scale, with the usual as a 2px ink tick or a dashed secondary-ink line.
 - **Do** give each record card its own condensed-caps title, and set every row and column label in the legend voice.
 - **Do** carry errors with an ink frame, the crosshatch mark and an "Error:" prefix.
 - **Do** put the consequence of a primary action in its value segment, and fill the segment magenta only while `aria-busy` is set.

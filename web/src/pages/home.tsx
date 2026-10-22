@@ -2,7 +2,7 @@ import type { SessionProps } from "../App";
 import { onLink } from "../router";
 import { CopyButton, usePageTitle } from "../ui";
 
-export function HomePage({ session }: SessionProps) {
+export function AccountPage({ session }: SessionProps) {
   usePageTitle("Your account");
   const user = session.user!;
   const mcpUrl = `${location.origin}/mcp`;
@@ -10,8 +10,8 @@ export function HomePage({ session }: SessionProps) {
   return (
     <div className="page">
       <header>
-        <h1 className="display">Your Moneytor</h1>
-        <p className="lede">Your numbers will appear here in the next release. For now, record and review them by talking to Claude or Gemini.</p>
+        <h1 className="display">Your account</h1>
+        <p className="lede">Record and ask about your money by talking to Claude or Gemini. The <a href="/" onClick={onLink("/")}>dashboard</a> shows the same numbers they report.</p>
       </header>
 
       <section className="sheet stacked" aria-labelledby="connect-title">
@@ -62,8 +62,8 @@ export function NotFoundPage() {
     <div className="page">
       <header><h1 className="display">Page not found</h1></header>
       <div className="sheet">
-        <p>There's nothing at this address. Check the link, or go back to your account.</p>
-        <div className="after"><a href="/" onClick={onLink("/")}>Go to your account</a></div>
+        <p>There's nothing at this address. Check the link, or go back to your dashboard.</p>
+        <div className="after"><a href="/" onClick={onLink("/")}>Go to your dashboard</a></div>
       </div>
     </div>
   );

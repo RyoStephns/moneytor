@@ -5,7 +5,8 @@ import { Shell } from "./ui";
 import { LoginPage, SetupPage, SignupPage } from "./pages/access";
 import { ConsentPage } from "./pages/consent";
 import { AdminPage } from "./pages/admin";
-import { HomePage, NotFoundPage } from "./pages/home";
+import { AccountPage, NotFoundPage } from "./pages/home";
+import { DashboardPage } from "./pages/dashboard";
 
 export type SessionProps = { session: Session; onSession: (s: Session) => void };
 
@@ -47,7 +48,8 @@ export function App() {
   else if (path === "/signup") page = <SignupPage {...props} code={loc.searchParams.get("code") ?? ""} />;
   else if (path === "/oauth/consent") page = signedIn ? <ConsentPage {...props} requestId={loc.searchParams.get("request")} /> : <Redirect to={`/login?next=${next}`} />;
   else if (path === "/admin") page = signedIn ? <AdminPage {...props} /> : <Redirect to={`/login?next=${next}`} />;
-  else if (path === "/") page = signedIn ? <HomePage {...props} /> : <Redirect to={session.setup === "done" ? "/login" : "/setup"} />;
+  else if (path === "/account") page = signedIn ? <AccountPage {...props} /> : <Redirect to={`/login?next=${next}`} />;
+  else if (path === "/") page = signedIn ? <DashboardPage /> : <Redirect to={session.setup === "done" ? "/login" : "/setup"} />;
   else page = <NotFoundPage />;
 
   return (

@@ -39,7 +39,8 @@ export function Shell({ session, path, onSignOut, children }: { session: Session
         {user && (
           <nav aria-label="Account">
             <span className="who">{user.email}</span>
-            <a href="/" onClick={onLink("/")} aria-current={path === "/" ? "page" : undefined}>Home</a>
+            <a href="/" onClick={onLink("/")} aria-current={path === "/" ? "page" : undefined}>Dashboard</a>
+            <a href="/account" onClick={onLink("/account")} aria-current={path === "/account" ? "page" : undefined}>Account</a>
             {user.is_owner && <a href="/admin" onClick={onLink("/admin")} aria-current={path === "/admin" ? "page" : undefined}>Invites &amp; people</a>}
             <button type="button" className="linkish" onClick={onSignOut}>Sign out</button>
           </nav>

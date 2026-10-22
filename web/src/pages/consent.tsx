@@ -52,7 +52,7 @@ export function ConsentPage({ session, requestId }: SessionProps & { requestId: 
         <header><h1 className="display">Request unavailable</h1></header>
         <div className="sheet">
           <p>{failure}</p>
-          <div className="after"><a href="/" onClick={onLink("/")}>Go to your account</a></div>
+          <div className="after"><a href="/" onClick={onLink("/")}>Go to your dashboard</a></div>
         </div>
       </div>
     );

@@ -14,6 +14,7 @@ import {
 } from "./auth.js";
 import { config } from "./config.js";
 import type { MysqlOAuthProvider } from "./oauthProvider.js";
+import { getAccountOverview, getAverages, getCurrentPeriod, getFinanceSummary, listPayPeriods } from "./repository.js";
 import { endSession, loadSession, requireCsrf, requireSession, startSession } from "./session.js";
 
 const email = z.string().trim().max(255).pipe(z.email({ error: "Enter a valid email address." }));
@@ -22,6 +23,13 @@ const loginBody = z.object({ email, password });
 const signupBody = z.object({ email, password, code: z.string().trim().min(1, { error: "Enter your invite code." }).max(100) });
 const setupBody = z.object({ token: z.string().min(1, { error: "Enter the setup token." }).max(500), email, password });
 const inviteBody = z.object({ days: z.number().int().min(1).max(30).default(7) });
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: "Dates must look like 2026-10-22." });
+const dashboardQuery = z.object({
+  start_date: day.optional(),
+  end_date: day.optional(),
+  account: z.string().trim().min(1).max(120).optional(),
+  period: z.enum(["day", "month"]).default("month"),
+});
 
 const FAIL_WINDOW_MS = 15 * 60 * 1000;
 const FAIL_LIMIT = 5;
@@ -117,6 +125,33 @@ export function createWebApi(provider: MysqlOAuthProvider) {
     const ok = await revokeInvite(requireSession(req).user.id, Number(req.params.id));
     if (!ok) throw new AuthError("That invite is already used, revoked, or doesn't exist.", 404);
     res.status(204).end();
+  });
+
+  // Dashboard reads go through the same repository calls as the MCP tools and are passed
+  // through untouched, so the page can never show a number the assistant wouldn't.
+  api.get("/dashboard/context", async (req, res) => {
+    const userId = requireSession(req).user.id;
+    const [current_period, pay_periods, accounts] = await Promise.all([
+      getCurrentPeriod(userId),
+      listPayPeriods(userId, 24),
+      getAccountOverview(userId),
+    ]);
+    res.set("Cache-Control", "no-store");
+    res.json({ current_period, pay_periods, accounts });
+  });
+
+  api.get("/dashboard/summary", async (req, res) => {
+    const userId = requireSession(req).user.id;
+    const q = dashboardQuery.parse(req.query);
+    // Averages are a yardstick for the chosen range, so they always span all history:
+    // get_averages for the totals, and the all-time summary for per-category ones.
+    const [summary, averages, history] = await Promise.all([
+      getFinanceSummary(userId, q),
+      getAverages(userId, { account: q.account, period: "month" }),
+      getFinanceSummary(userId, { account: q.account, period: "month" }),
+    ]);
+    res.set("Cache-Control", "no-store");
+    res.json({ summary, averages, history });
   });
 
   api.get("/oauth/requests/:id", async (req, res) => {
