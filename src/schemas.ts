@@ -215,3 +215,38 @@ export const reconcileAccountSchema = {
   actual_balance: z.number().describe("The balance the user actually sees right now, for example in the bank app."),
   notes: z.string().max(1000).optional().describe("Optional note about the difference.")
 };
+
+export const addReceivableSchema = {
+  borrower: z.string().min(1).max(120).describe("Who owes the money back, as the user names them, for example Budi."),
+  amount: z.number().positive().describe("Amount fronted, as a positive number."),
+  account: z.string().max(120).optional().describe("Account the money left from, exactly as listed by list_accounts. Omit to use the default account."),
+  date: z.string().optional().describe("ISO date or datetime. Date-only values are treated as local day start. Omit for now."),
+  notes: z.string().max(1000).optional().describe("Optional note, for example what it was for.")
+};
+
+export const listReceivablesSchema = {
+  status: z.enum(["open", "settled", "all"]).default("open").describe("open = not paid back yet (default), settled = already paid back."),
+  borrower: z.string().max(120).optional().describe("Only this person."),
+  account: z.string().max(120).optional().describe("Only receivables that left from, or were paid back into, this account."),
+  limit: z.number().int().positive().max(500).default(100),
+  offset: z.number().int().min(0).default(0)
+};
+
+export const markReceivableReimbursedSchema = {
+  id: z.number().int().positive().describe("ID of the receivable that was paid back."),
+  account: z.string().max(120).optional().describe("Account the money came back into, exactly as listed by list_accounts. Omit to use the default account."),
+  date: z.string().optional().describe("When it was paid back. ISO date or datetime. Omit for now.")
+};
+
+export const updateReceivableSchema = {
+  id: z.number().int().positive().describe("ID of the receivable to change."),
+  borrower: z.string().min(1).max(120).optional(),
+  amount: z.number().positive().optional().describe("Only while it is still open."),
+  account: z.string().max(120).optional().describe("Account the money left from. Only while it is still open."),
+  date: z.string().optional().describe("ISO date or datetime the money was fronted."),
+  notes: z.string().max(1000).nullable().optional().describe("New note, or null to clear it. Omit to leave unchanged.")
+};
+
+export const deleteReceivableSchema = {
+  id: z.number().int().positive().describe("ID of the receivable to delete.")
+};

@@ -55,12 +55,13 @@ describe.skipIf(!HAS_DB)("account tools over MCP (requires MySQL)", () => {
     await repo.closePool();
   });
 
-  it("registers the nine account tools next to the old ones", async () => {
+  it("registers the account and receivable tools next to the old ones", async () => {
     const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names).toHaveLength(33);
+    expect(names).toHaveLength(38);
     expect(names).toEqual(expect.arrayContaining([
       "list_accounts", "add_account", "update_account", "set_default_account", "remove_account",
       "transfer_between_accounts", "list_transfers", "delete_transfer", "reconcile_account",
+      "add_receivable", "list_receivables", "mark_receivable_reimbursed", "update_receivable", "delete_receivable",
       "add_transaction", "get_finance_summary",
     ]));
   });

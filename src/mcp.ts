@@ -33,6 +33,11 @@ import {
   listTransfers,
   deleteTransfer,
   reconcileAccount,
+  createReceivable,
+  listReceivables,
+  settleReceivable,
+  updateReceivable,
+  deleteReceivable,
   type GroupInput,
   type InputTransaction,
 } from "./repository.js";
@@ -67,6 +72,11 @@ import {
   listTransfersSchema,
   deleteTransferSchema,
   reconcileAccountSchema,
+  addReceivableSchema,
+  listReceivablesSchema,
+  markReceivableReimbursedSchema,
+  updateReceivableSchema,
+  deleteReceivableSchema,
 } from "./schemas.js";
 
 function jsonResult(value: unknown) {
@@ -110,7 +120,7 @@ export function createMoneytorServer(userId: number): McpServer {
     "add_transaction",
     {
       title: "Add transaction",
-      description: "Record one personal finance income or expense transaction. The category field must match an existing category from list_categories. Use add_category first if needed. When the user says where the money came from or went (for example \"10k from cash\"), pass that account; its name must match one from list_accounts, so call list_accounts first. If the account is not registered yet, call add_account first instead of guessing. Omit account to use the default account.",
+      description: "Record one personal finance income or expense transaction. The category field must match an existing category from list_categories. Use add_category first if needed. When the user says where the money came from or went (for example \"10k from cash\"), pass that account; its name must match one from list_accounts, so call list_accounts first. If the account is not registered yet, call add_account first instead of guessing. Omit account to use the default account. Do not use this for money the user fronts for someone else and expects back, nor for that money being paid back: use add_receivable and mark_receivable_reimbursed so it never counts as expense or income.",
       inputSchema: addTransactionSchema
     },
     async (input) => jsonResult(await addTransaction(userId, input))
@@ -447,6 +457,63 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       inputSchema: reconcileAccountSchema
     },
     async (input) => jsonResult(await reconcileAccount(userId, input.account, input.actual_balance, input.notes))
+  );
+
+  server.registerTool(
+    "add_receivable",
+    {
+      title: "Add receivable",
+      description: "Record money the user fronted or lent to someone and expects back, for example \"I paid 150k for Budi's lunch\". It lowers the balance of the account it left from but is not an expense, so it never appears in summaries, averages, or budgets. Pass the account it left from (a name from list_accounts) or omit it for the default account. When the person pays back, call mark_receivable_reimbursed, not add_transaction with type income.",
+      inputSchema: addReceivableSchema
+    },
+    async (input) => jsonResult(await createReceivable(userId, input))
+  );
+
+  server.registerTool(
+    "list_receivables",
+    {
+      title: "List receivables",
+      description: "List money people still owe the user (status open, the default), already paid back (settled), or both (all). Always returns outstanding_total and outstanding_by_borrower, which is who still owes how much. Use it to find the id before mark_receivable_reimbursed. Outstanding receivables are not part of any account balance.",
+      inputSchema: listReceivablesSchema
+    },
+    async (input) => jsonResult(await listReceivables(userId, input))
+  );
+
+  server.registerTool(
+    "mark_receivable_reimbursed",
+    {
+      title: "Mark receivable reimbursed",
+      description: "Mark one receivable as paid back in full. The money returns to the account you pass (a name from list_accounts) or the default account. This is not income: it only raises that account's balance and never changes income, summaries, or averages. Fails if it is already settled. Partial repayment is not supported.",
+      inputSchema: markReceivableReimbursedSchema
+    },
+    async (input) => jsonResult(await settleReceivable(userId, input.id, { account: input.account, date: input.date }))
+  );
+
+  server.registerTool(
+    "update_receivable",
+    {
+      title: "Update receivable",
+      description: "Correct a receivable. Only supply what should change. Amount and account can only change while it is still open; borrower, date, and notes can change anytime.",
+      inputSchema: updateReceivableSchema
+    },
+    async (input) => jsonResult(await updateReceivable(userId, input.id, {
+      borrower: input.borrower,
+      amount: input.amount,
+      account: input.account,
+      date: input.date,
+      notes: input.notes
+    }))
+  );
+
+  server.registerTool(
+    "delete_receivable",
+    {
+      title: "Delete receivable",
+      description: "Delete one receivable by id, open or settled. The balances it moved go back to what they were before it was recorded.",
+      inputSchema: deleteReceivableSchema,
+      annotations: { destructiveHint: true }
+    },
+    async (input) => jsonResult(await deleteReceivable(userId, input.id))
   );
 
   return server;

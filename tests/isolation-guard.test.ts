@@ -41,6 +41,7 @@ const SENSITIVE_TABLES = [
   "accounts",
   "transfers",
   "account_adjustments",
+  "receivables",
 ];
 
 const sqlLiterals = extractSqlLiterals(source);
