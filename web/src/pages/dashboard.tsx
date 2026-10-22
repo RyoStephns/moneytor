@@ -364,15 +364,17 @@ function Pace({ nums, range, usual }: { nums: Numbers | null; range: Range | nul
   const ref = (d: number) => (usual && range ? (range.payPeriod ? usual.spentBy(d) : usualBy(usual, range, d)) : 0);
   const usualToday = usual && range ? usualBy(usual, range, range.days) : 0;
   const whole = range?.payPeriod && range.end && !range.live;
-  const top = niceTop(Math.max(run, ref(range?.axisDays ?? 0), budgetTotal, 1));
+  // an open pay period runs to the same estimated pay day the record card names
+  const axis = range ? (range.end || !usual ? range.axisDays : Math.max(range.days, usual.length)) : 1;
+  const top = niceTop(Math.max(run, ref(axis), budgetTotal, 1));
   const ahead = usualToday > 0 ? run / usualToday - 1 : null;
 
   const h = 240, padL = 52, padR = 8, padT = 28, padB = 26;
   const W = Math.max(width, 280);
-  const x = (d: number) => padL + (d / (range?.axisDays || 1)) * (W - padL - padR);
+  const x = (d: number) => padL + (d / axis) * (W - padL - padR);
   const y = (v: number) => padT + (1 - v / top) * (h - padT - padB);
   const path = steps.reduce((acc, s, i) => acc + `H${x(s.x - 1).toFixed(1)}V${y(s.y).toFixed(1)}` + (i === steps.length - 1 ? `H${x(s.x).toFixed(1)}` : ""), `M${x(0)} ${y(0)}`);
-  const usualPath = range && usual ? Array.from({ length: range.axisDays + 1 }, (_, d) => `${d ? "L" : "M"}${x(d).toFixed(1)} ${y(ref(d)).toFixed(1)}`).join("") : "";
+  const usualPath = range && usual ? Array.from({ length: axis + 1 },(_, d) => `${d ? "L" : "M"}${x(d).toFixed(1)} ${y(ref(d)).toFixed(1)}`).join("") : "";
   const tx = range ? x(range.days) : 0;
 
   let gap = "";
@@ -417,7 +419,7 @@ function Pace({ nums, range, usual }: { nums: Numbers | null; range: Range | nul
               </g>
             )}
             <text className="tick" x={padL} y={h - 6}>{day(range.start)}</text>
-            <text className="tick" x={W - padR} y={h - 6} textAnchor="end">{day(addDays(range.start, range.axisDays - 1))}{range.end ? "" : " (est.)"}</text>
+            <text className="tick" x={W - padR} y={h - 6} textAnchor="end">{day(addDays(range.start, axis - 1))}{range.end ? "" : " (est.)"}</text>
           </svg>
         )}
       </div>
