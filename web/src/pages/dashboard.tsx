@@ -26,7 +26,6 @@ type Numbers = { summary: Summary; averages: Averages; history: Summary; baselin
 type Range = { start: string; end: string | null; days: number; axisDays: number; label: string; live: boolean };
 
 const MONTH_DAYS = 365.25 / 12;
-const TOP_CATEGORIES = 8;
 
 const whole = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 const cents = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -352,10 +351,7 @@ function WhereItWent({ nums, range }: { nums: Numbers | null; range: Range | nul
   const compared = Boolean(yard);
   const usual = (cat: string) => (yard ? yard.outPerDayFor(cat) * range.days : 0);
 
-  const shown = spent.slice(0, TOP_CATEGORIES);
-  const rest = spent.slice(TOP_CATEGORIES);
-  const rows = shown.map(([cat, amt]) => ({ cat, amt, avg: usual(cat) }));
-  if (rest.length) rows.push({ cat: `Other (${rest.length})`, amt: rest.reduce((s, r) => s + r[1], 0), avg: rest.reduce((s, r) => s + usual(r[0]), 0) });
+  const rows = spent.map(([cat, amt]) => ({ cat, amt, avg: usual(cat) }));
 
   // the scale runs from the lowest point the steps reach up to income, so an overspent period dips below zero
   const lo = Math.min(0, net);
