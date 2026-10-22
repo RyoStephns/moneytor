@@ -38,6 +38,7 @@ import {
   settleReceivable,
   updateReceivable,
   deleteReceivable,
+  listAccounts,
   type GroupInput,
   type InputTransaction,
 } from "./repository.js";
@@ -77,7 +78,35 @@ import {
   markReceivableReimbursedSchema,
   updateReceivableSchema,
   deleteReceivableSchema,
+  dashboardLinkSchema,
 } from "./schemas.js";
+import { config } from "./config.js";
+
+// The dashboard only offers the last 24 pay periods and active accounts, and drops anything
+// in the URL it can't match, so the link is checked against the same lists before it is handed out.
+async function dashboardLink(userId: number, input: { pay_period_id?: number; start_date?: string; end_date?: string; account?: string }) {
+  const url = new URL("/", config.publicBaseUrl);
+  if (input.pay_period_id && (input.start_date || input.end_date)) throw new Error("Pass either pay_period_id or start_date and end_date, not both.");
+  if (Boolean(input.start_date) !== Boolean(input.end_date)) throw new Error("A custom range needs both start_date and end_date.");
+
+  if (input.pay_period_id) {
+    const periods = await listPayPeriods(userId, 24);
+    if (!periods.some((p) => p.id === input.pay_period_id)) throw new Error(`Pay period ${input.pay_period_id} is not one of the user's last 24 pay periods. Use list_pay_periods to pick one.`);
+    url.searchParams.set("period", String(input.pay_period_id));
+  }
+  if (input.start_date && input.end_date) {
+    if (input.start_date > input.end_date) throw new Error("start_date has to be on or before end_date.");
+    url.searchParams.set("from", input.start_date);
+    url.searchParams.set("to", input.end_date);
+  }
+  if (input.account) {
+    const wanted = input.account.trim().toLowerCase();
+    const acc = (await listAccounts(userId)).find((a) => a.name.toLowerCase() === wanted);
+    if (!acc) throw new Error(`Account "${input.account}" is not an active account. Use list_accounts to pick one.`);
+    url.searchParams.set("account", acc.name);
+  }
+  return url.toString();
+}
 
 function jsonResult(value: unknown) {
   return {
@@ -90,11 +119,23 @@ function jsonResult(value: unknown) {
   };
 }
 
+// New users usually join partway through a pay period. Their salary and spending so far are
+// already inside what their accounts hold today, so the setup starts from today's balances
+// and the first pay period waits for the next salary instead of being rebuilt backwards.
+const INSTRUCTIONS = `Moneytor tracks one person's income, expenses, accounts, and pay-period budgets.
+
+Setting up a new user (list_accounts returns no accounts):
+1. Before recording any transaction, ask which accounts they keep money in (cash, banks, e-wallets) and what each one shows right now. Register each with add_account, opening_balance = that balance today.
+2. Do not back-date the salary or past spending of the pay period they joined in. Today's balances already contain that money, and recording it again counts it twice.
+3. Do not create a pay period for the one already running. Wait for their next salary: record it with add_transaction, then create_pay_period from that date. Until then the dashboard shows the calendar month.
+
+When the user wants to see their numbers, charts, or dashboard, call get_dashboard_link and give them the link.`;
+
 export function createMoneytorServer(userId: number): McpServer {
   const server = new McpServer({
     name: "moneytor",
     version: "0.1.0"
-  });
+  }, { instructions: INSTRUCTIONS });
 
   server.registerTool(
     "list_categories",
@@ -206,7 +247,7 @@ export function createMoneytorServer(userId: number): McpServer {
     "create_pay_period",
     {
       title: "Create pay period",
-      description: "Create a new pay period when salary arrives. Close the previous period first with close_pay_period.",
+      description: "Create a new pay period when salary arrives. Close the previous period first with close_pay_period. For a user who started tracking partway through a pay period, do not create one for the period already running: create their first one when the next salary arrives.",
       inputSchema: createPayPeriodSchema,
     },
     async (input) => jsonResult(await createPayPeriod(userId, input))
@@ -371,7 +412,7 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
     "add_account",
     {
       title: "Add account",
-      description: "Register an account where the user keeps money, for example cash, a bank account, or an e-wallet. Needed before using a name that list_accounts does not show. The first account created becomes the default.",
+      description: "Register an account where the user keeps money, for example cash, a bank account, or an e-wallet. Needed before using a name that list_accounts does not show. The first account created becomes the default. For a new user, register their accounts before recording any transaction, with opening_balance set to what each one shows today.",
       inputSchema: addAccountSchema
     },
     async (input) => jsonResult(await addAccount(userId, input))
@@ -514,6 +555,17 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
       annotations: { destructiveHint: true }
     },
     async (input) => jsonResult(await deleteReceivable(userId, input.id))
+  );
+
+  server.registerTool(
+    "get_dashboard_link",
+    {
+      title: "Get dashboard link",
+      description: "Return a link to the user's Moneytor dashboard in the browser, opened on a pay period, a custom date range, or one account. With nothing given it opens the current pay period (or the calendar month when there is none) for all accounts. The user signs in first if they are not already.",
+      inputSchema: dashboardLinkSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input) => jsonResult({ url: await dashboardLink(userId, input) })
   );
 
   return server;

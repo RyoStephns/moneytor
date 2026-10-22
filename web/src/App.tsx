@@ -49,7 +49,7 @@ export function App() {
   else if (path === "/oauth/consent") page = signedIn ? <ConsentPage {...props} requestId={loc.searchParams.get("request")} /> : <Redirect to={`/login?next=${next}`} />;
   else if (path === "/admin") page = signedIn ? <AdminPage {...props} /> : <Redirect to={`/login?next=${next}`} />;
   else if (path === "/account") page = signedIn ? <AccountPage {...props} /> : <Redirect to={`/login?next=${next}`} />;
-  else if (path === "/") page = signedIn ? <DashboardPage /> : <Redirect to={session.setup === "done" ? "/login" : "/setup"} />;
+  else if (path === "/") page = signedIn ? <DashboardPage /> : <Redirect to={session.setup !== "done" ? "/setup" : loc.search ? `/login?next=${next}` : "/login"} />;
   else page = <NotFoundPage />;
 
   return (

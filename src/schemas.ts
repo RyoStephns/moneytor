@@ -168,7 +168,14 @@ export const addAccountSchema = {
   name: accountName("Account name, for example Tunai, BCA, Blu. Must be unique (case-insensitive)."),
   type: accountTypeSchema.describe("cash = physical cash, bank = bank account, ewallet = e-wallet or digital wallet, other = anything else."),
   description: z.string().max(500).optional().describe("Short note about what this account is for."),
-  opening_balance: z.number().optional().describe("Money already in the account when you start tracking it. Defaults to 0.")
+  opening_balance: z.number().optional().describe("What the account shows right now, when tracking starts. Income and spending from before today are already inside it, so do not record them as transactions. Defaults to 0.")
+};
+
+export const dashboardLinkSchema = {
+  pay_period_id: z.number().int().positive().optional().describe("Open this pay period (id from get_current_period or list_pay_periods). Omit for the current pay period, or the calendar month when there is none."),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Open a custom date range instead (YYYY-MM-DD). Needs end_date too."),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Last day of the custom range (YYYY-MM-DD)."),
+  account: z.string().max(120).optional().describe("Show only this account, a name from list_accounts. Omit for all accounts.")
 };
 
 export const updateAccountSchema = {

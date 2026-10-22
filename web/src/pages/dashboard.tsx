@@ -50,6 +50,7 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct
 const day = (iso: string) => `${+iso.slice(8, 10)} ${MON[+iso.slice(5, 7) - 1]}`;
 const monthName = { format: (d: Date) => `${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}` };
 const today = () => new Date().toLocaleDateString("en-CA");
+const isDay = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 const span = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5) + 1;
 
@@ -170,7 +171,16 @@ export function DashboardPage() {
     api<Context>("/dashboard/context")
       .then((c) => {
         setCtx(c);
-        setChoice(c.current_period ? `p${c.current_period.id}` : "month");
+        // a link from the assistant can open on a pay period, a date range, or one account;
+        // anything here that doesn't match this user's data falls back to the usual view
+        const q = new URLSearchParams(location.search);
+        const from = q.get("from") ?? "", to = q.get("to") ?? "";
+        if (c.pay_periods.some((p) => String(p.id) === q.get("period"))) setChoice(`p${q.get("period")}`);
+        else if (isDay(from) && isDay(to) && from <= to) {
+          setCustom({ start: from, end: to });
+          setChoice("custom");
+        } else setChoice(c.current_period ? `p${c.current_period.id}` : "month");
+        if (c.accounts.accounts.some((a) => a.name === q.get("account"))) setAccount(q.get("account")!);
       })
       .catch(() => setFailed(true));
   }, []);

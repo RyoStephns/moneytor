@@ -149,7 +149,7 @@ describe.skipIf(!HAS_DB)("OAuth connector end to end (requires MySQL)", () => {
     const provider = claudeLike();
     const client = await connect(provider, "a@e2e.test");
     expect((provider.info as { token_endpoint_auth_method?: string }).token_endpoint_auth_method).toBe("none");
-    expect((await client.listTools()).tools).toHaveLength(38);
+    expect((await client.listTools()).tools).toHaveLength(39);
     expect(text(await client.callTool({ name: "list_accounts", arguments: {} }))).toMatchObject({ accounts: [] });
     await client.close();
   });
@@ -197,7 +197,7 @@ describe.skipIf(!HAS_DB)("OAuth connector end to end (requires MySQL)", () => {
     expect(expired.status).toBe(401);
     expect(expired.headers.get("www-authenticate")).toContain("invalid_token");
     // the SDK client refreshes on its own and carries on
-    expect((await client.listTools()).tools.length).toBe(38);
+    expect((await client.listTools()).tools.length).toBe(39);
     expect(provider.saved!.access_token).not.toBe(access);
     await client.close();
 
@@ -230,7 +230,7 @@ describe.skipIf(!HAS_DB)("OAuth connector end to end (requires MySQL)", () => {
     expect(info.token_endpoint_auth_method).toBe("none");
     expect(info.client_secret).toBeUndefined();
     expect(gemini.saved!.refresh_token).toBeTruthy();
-    expect((await client.listTools()).tools).toHaveLength(38);
+    expect((await client.listTools()).tools).toHaveLength(39);
     await client.close();
   });
 });
