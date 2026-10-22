@@ -57,6 +57,8 @@ describe.skipIf(!HAS_DB)("dashboard API over HTTP (requires MySQL)", () => {
 
     await repo.addAccount(A, { name: "Wallet", type: "cash", opening_balance: 100000 });
     await repo.addAccount(A, { name: "Bank", type: "bank", opening_balance: 2500000.5 });
+    const august = await repo.createPayPeriod(A, { period_start: "2026-08-29", salary_amount: 9000000 });
+    await repo.closePayPeriod(A, august.id, "2026-09-28");
     await repo.createPayPeriod(A, { period_start: "2026-09-29", salary_amount: 9000000 });
     const seed: [string, "income" | "expense", number, string, string][] = [
       ["2026-08-30", "income", 9000000, "Salary", "Bank"],
@@ -121,11 +123,19 @@ describe.skipIf(!HAS_DB)("dashboard API over HTTP (requires MySQL)", () => {
       expect(r.body.summary).toEqual(asTool(await repo.getFinanceSummary(A, { period: "month", ...f })));
       expect(r.body.averages).toEqual(asTool(await repo.getAverages(A, { account: f.account, period: "month" })));
       expect(r.body.history).toEqual(asTool(await repo.getFinanceSummary(A, { account: f.account, period: "month" })));
+      const closed = { start_date: "2026-08-29", end_date: "2026-09-28", account: f.account, period: "month" as const };
+      expect(r.body.baseline).toEqual({ period_start: "2026-08-29", period_end: "2026-09-28", pay_periods: 1, summary: asTool(await repo.getFinanceSummary(A, closed)) });
+      expect(r.body.trend).toEqual([
+        { id: expect.any(Number), period_start: "2026-09-29", period_end: null, totals: (await repo.getFinanceSummary(A, { start_date: "2026-09-29", account: f.account, period: "month" })).totals },
+        { id: expect.any(Number), period_start: "2026-08-29", period_end: "2026-09-28", totals: (await repo.getFinanceSummary(A, closed)).totals },
+      ]);
     }
     const pp = await get("/api/dashboard/summary?start_date=2026-09-29", a);
     expect(pp.body.summary.totals).toEqual({ income: 9000000, expense: 550000.75, net: 8449999.25, transaction_count: 4 });
     // averages ignore the date range: three months of history, not one period
     expect(pp.body.averages.period_count).toBe(3);
+    // the closed August pay period holds the 30 Aug salary and the 2 Sep lunch, nothing from the open one
+    expect(pp.body.baseline.summary.totals).toEqual({ income: 9000000, expense: 45000.25, net: 8954999.75, transaction_count: 2 });
   });
 
   it("shows each person only their own money", async () => {
@@ -137,6 +147,8 @@ describe.skipIf(!HAS_DB)("dashboard API over HTTP (requires MySQL)", () => {
     const sum = await get("/api/dashboard/summary", b);
     expect(sum.body.summary.totals).toEqual({ income: 0, expense: 777, net: -777, transaction_count: 1 });
     expect(sum.body.summary.by_category.map((c: { category: string }) => c.category)).toEqual(["Secret"]);
+    expect(sum.body.baseline).toBeNull();
+    expect(sum.body.trend).toEqual([]);
 
     // naming A's account from B's session finds nothing rather than A's rows
     const probe = await get("/api/dashboard/summary?account=Bank", b);

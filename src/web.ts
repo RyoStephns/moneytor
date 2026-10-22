@@ -145,13 +145,35 @@ export function createWebApi(provider: MysqlOAuthProvider) {
     const q = dashboardQuery.parse(req.query);
     // Averages are a yardstick for the chosen range, so they always span all history:
     // get_averages for the totals, and the all-time summary for per-category ones.
-    const [summary, averages, history] = await Promise.all([
+    const [summary, averages, history, periods] = await Promise.all([
       getFinanceSummary(userId, q),
       getAverages(userId, { account: q.account, period: "month" }),
       getFinanceSummary(userId, { account: q.account, period: "month" }),
+      listPayPeriods(userId, 24),
+    ]);
+    // Calendar months split a salary paid on the 28th from what it pays for, so the page
+    // reads "usual" off the closed pay periods and shows its trend per pay period.
+    // Each piece is get_finance_summary over that period's dates.
+    const span = (start: string, end: string | null) => ({ start_date: start, end_date: end ?? undefined, account: q.account, period: "month" as const });
+    const closed = periods.filter((p) => p.status === "closed" && p.period_end);
+    const [baseline, trend] = await Promise.all([
+      closed.length
+        ? getFinanceSummary(userId, span(closed[closed.length - 1].period_start, closed[0].period_end)).then((s) => ({
+            period_start: closed[closed.length - 1].period_start,
+            period_end: closed[0].period_end!,
+            pay_periods: closed.length,
+            summary: s,
+          }))
+        : null,
+      Promise.all(periods.slice(0, 6).map(async (p) => ({
+        id: p.id,
+        period_start: p.period_start,
+        period_end: p.period_end,
+        totals: (await getFinanceSummary(userId, span(p.period_start, p.period_end))).totals,
+      }))),
     ]);
     res.set("Cache-Control", "no-store");
-    res.json({ summary, averages, history });
+    res.json({ summary, averages, history, baseline, trend });
   });
 
   api.get("/oauth/requests/:id", async (req, res) => {

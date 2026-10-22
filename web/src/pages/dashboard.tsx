@@ -19,7 +19,9 @@ type Summary = {
   by_period: (Row & { period: string })[];
 };
 type Averages = { period_count: number; average_income: number; average_expense: number; average_net: number; by_period: { period: string; income: number; expense: number; net: number }[] };
-type Numbers = { summary: Summary; averages: Averages; history: Summary };
+type Baseline = { period_start: string; period_end: string; pay_periods: number; summary: Summary };
+type TrendRow = { id: number; period_start: string; period_end: string | null; totals: Summary["totals"] };
+type Numbers = { summary: Summary; averages: Averages; history: Summary; baseline: Baseline | null; trend: TrendRow[] };
 // days: how much of the range has happened so far; live: today falls inside it
 type Range = { start: string; end: string | null; days: number; axisDays: number; label: string; live: boolean };
 
@@ -65,6 +67,39 @@ function expenseByCategory(s: Summary) {
   const m = new Map<string, number>();
   for (const r of s.by_category) if (r.type === "expense") m.set(r.category, (m.get(r.category) ?? 0) + Number(r.total));
   return m;
+}
+
+// What "usual" means: daily rates from the closed pay periods, because a salary paid on the
+// 28th makes calendar months lopsided. Without a closed period, fall back to get_averages.
+type Yardstick = { inPerDay: number; outPerDay: number; outPerDayFor: (cat: string) => number; perIn: number; perOut: number; unit: string; basis: string };
+
+function yardstick(n: Numbers): Yardstick | null {
+  if (n.baseline) {
+    const { period_start, period_end, pay_periods: k, summary } = n.baseline;
+    const days = span(period_start, period_end);
+    const cats = expenseByCategory(summary);
+    return {
+      inPerDay: summary.totals.income / days,
+      outPerDay: summary.totals.expense / days,
+      outPerDayFor: (cat) => (cats.get(cat) ?? 0) / days,
+      perIn: summary.totals.income / k,
+      perOut: summary.totals.expense / k,
+      unit: "pay period",
+      basis: `${plural(k, "closed pay period")}, ${day(period_start)} – ${day(period_end)}`,
+    };
+  }
+  const a = n.averages;
+  if (!a.period_count) return null;
+  const cats = expenseByCategory(n.history);
+  return {
+    inPerDay: a.average_income / MONTH_DAYS,
+    outPerDay: a.average_expense / MONTH_DAYS,
+    outPerDayFor: (cat) => (cats.get(cat) ?? 0) / a.period_count / MONTH_DAYS,
+    perIn: a.average_income,
+    perOut: a.average_expense,
+    unit: "month",
+    basis: `${plural(a.period_count, "calendar month")} since ${monthName.format(new Date(a.by_period[0].period + "-01T00:00:00Z"))}`,
+  };
 }
 
 export function DashboardPage() {
@@ -181,53 +216,54 @@ export function DashboardPage() {
 function PeriodRecord({ nums, ctx, range, account }: { nums: Numbers | null; ctx: Context | null; range: Range | null; account: string }) {
   if (!nums || !ctx || !range) return <section className="sheet stacked"><Skeletons n={4} /></section>;
   const { totals } = nums.summary;
-  const a = nums.averages;
+  const yard = yardstick(nums);
   // a range that hasn't started has no "usual" to compare against
-  const months = range.days > 0 ? a.period_count : 0;
-  const scaled = (perMonth: number) => (perMonth / MONTH_DAYS) * range.days;
-  const since = a.by_period[0] ? monthName.format(new Date(a.by_period[0].period + "-01T00:00:00Z")) : null;
+  const usual = yard && range.days > 0 ? yard : null;
   return (
     <section className="sheet stacked" aria-labelledby="period-title">
       <h2 className="title record-title" id="period-title">This period</h2>
       <div className="keyfig">
         <span className="legend">Net</span>
         <span className="figure">{money(totals.net, true)}</span>
-        {months > 0 && <span className="note">usual for {range.days} days: <span className="money">{money(scaled(a.average_net), true)}</span></span>}
+        {usual && <span className="note">usual for {range.days} days: <span className="money">{money((usual.inPerDay - usual.outPerDay) * range.days, true)}</span></span>}
       </div>
       <table className="record figures">
         <tbody>
           <tr>
             <th scope="row">Income</th>
-            <td className="num"><span className="money">{money(totals.income)}</span>{months > 0 && <span className="note">usual <span className="money">{money(scaled(a.average_income))}</span></span>}</td>
+            <td className="num"><span className="money">{money(totals.income)}</span>{usual && <span className="note">usual <span className="money">{money(usual.inPerDay * range.days)}</span></span>}</td>
           </tr>
           <tr>
             <th scope="row">Expense</th>
-            <td className="num"><span className="money">{money(-totals.expense)}</span>{months > 0 && <span className="note">usual <span className="money">{money(-scaled(a.average_expense))}</span></span>}</td>
+            <td className="num"><span className="money">{money(-totals.expense)}</span>{usual && <span className="note">usual <span className="money">{money(-usual.outPerDay * range.days)}</span></span>}</td>
           </tr>
           <tr>
             <th scope="row">Balance now</th>
             <td className="num"><span className="money">{money(ctx.accounts.total_balance)}</span><span className="note">{account ? "all accounts, not filtered" : plural(ctx.accounts.accounts.length, "account")}</span></td>
           </tr>
-          {a.period_count > 0 ? (
+          {yard ? (
             <>
               <tr>
-                <th scope="row">Avg in a month</th>
-                <td className="num plain"><span className="money">{money(a.average_income)}</span></td>
+                <th scope="row">Avg in</th>
+                <td className="num plain"><span className="money">{money(yard.perIn)}</span><span className="note">a {yard.unit}</span></td>
               </tr>
               <tr>
-                <th scope="row">Avg out a month</th>
-                <td className="num plain"><span className="money">{money(-a.average_expense)}</span>{since && <span className="note">since {since}, over {plural(a.period_count, "month")}</span>}</td>
+                <th scope="row">Avg out</th>
+                <td className="num plain"><span className="money">{money(-yard.perOut)}</span><span className="note">a {yard.unit}, from {yard.basis}</span></td>
               </tr>
             </>
           ) : (
             <tr>
-              <th scope="row">Per month</th>
+              <th scope="row">Average</th>
               <td className="num plain">Not enough history yet</td>
             </tr>
           )}
         </tbody>
       </table>
-      <p className="small muted record-foot">{plural(totals.transaction_count, "transaction")} in this period.{months > 0 && ` "Usual" is your average month scaled to ${range.days} days.`}</p>
+      <p className="small muted record-foot">
+        {plural(totals.transaction_count, "transaction")} in this period.
+        {usual && ` "Usual" is what you typically take in and spend per day ${yard!.unit === "pay period" ? "in your closed pay periods" : "in an average month"}, times ${range.days} days.`}
+      </p>
     </section>
   );
 }
@@ -258,7 +294,8 @@ function Pace({ nums, range }: { nums: Numbers | null; range: Range | null }) {
       steps.push({ x: i + 1, y: run });
     }
   }
-  const perDay = ready ? nums.averages.average_expense / MONTH_DAYS : 0;
+  const yard = ready ? yardstick(nums) : null;
+  const perDay = yard?.outPerDay ?? 0;
   const usualToday = perDay * (range?.days ?? 0);
   const top = Math.max(run, perDay * (range?.axisDays ?? 0), 1);
   const ahead = usualToday > 0 ? run / usualToday - 1 : null;
@@ -272,7 +309,7 @@ function Pace({ nums, range }: { nums: Numbers | null; range: Range | null }) {
   const tx = range ? x(range.days) : 0;
 
   let headline = "Spending pace";
-  if (ready && ahead !== null && nums.averages.period_count > 0) {
+  if (ready && ahead !== null && yard) {
     const pct = Math.round(Math.abs(ahead) * 100);
     headline = pct < 3 ? "Spending at your usual pace" : `Spending ${pct}% ${ahead > 0 ? "above" : "under"} your usual pace`;
   }
@@ -282,7 +319,7 @@ function Pace({ nums, range }: { nums: Numbers | null; range: Range | null }) {
       <div className="section-head">
         <h2 className="title" id="pace-title">{headline}</h2>
         <p className="small muted">
-          Running total of expense. Dashed line: your average month spread evenly
+          Running total of expense. Dashed line: your usual daily spend{yard?.unit === "pay period" ? " in closed pay periods" : " in an average month"}
           {ready && perDay > 0 ? <>; by {day(addDays(range.start, range.axisDays - 1))} that's <span className="nowrap">{money(-perDay * range.axisDays)}</span>.</> : "."}
         </p>
       </div>
@@ -311,9 +348,9 @@ function WhereItWent({ nums, range }: { nums: Numbers | null; range: Range | nul
   if (!nums || !range) return <section className="sheet"><h2 className="title">Where it went</h2><Skeletons n={5} /></section>;
   const { income, expense, net } = nums.summary.totals;
   const spent = [...expenseByCategory(nums.summary)].sort((a, b) => b[1] - a[1]);
-  const usualMap = expenseByCategory(nums.history);
-  const months = range.days > 0 ? nums.averages.period_count : 0;
-  const usual = (cat: string) => (months ? ((usualMap.get(cat) ?? 0) / months / MONTH_DAYS) * range.days : 0);
+  const yard = range.days > 0 ? yardstick(nums) : null;
+  const compared = Boolean(yard);
+  const usual = (cat: string) => (yard ? yard.outPerDayFor(cat) * range.days : 0);
 
   const shown = spent.slice(0, TOP_CATEGORIES);
   const rest = spent.slice(TOP_CATEGORIES);
@@ -334,7 +371,7 @@ function WhereItWent({ nums, range }: { nums: Numbers | null; range: Range | nul
     <section className="sheet" aria-labelledby="where-title">
       <div className="section-head">
         <h2 className="title" id="where-title">Where it went</h2>
-        {months > 0 && <p className="small muted">Tick and %: compared with what you usually spend on it in {range.days} days.</p>}
+        {compared && <p className="small muted">Tick and %: compared with what you usually spend on it in {range.days} days.</p>}
       </div>
       {expense === 0 && income === 0 ? <p className="empty">Nothing recorded in this period{range.end ? "" : " yet"}.</p> : (
         <ol className="steps-down">
@@ -362,7 +399,7 @@ function WhereItWent({ nums, range }: { nums: Numbers | null; range: Range | nul
                   {r.avg > 0 && <u style={{ left: `${Math.max(0, pos(from - r.avg))}%` }} aria-hidden="true" />}
                 </span>
                 <span className="amt">{money(-r.amt)}</span>
-                <span className="dev">{dev === null ? (months ? "new" : "") : `${dev > 0 ? "+" : dev < 0 ? "−" : ""}${Math.abs(dev)}%`}</span>
+                <span className="dev">{dev === null ? (compared ? "new" : "") : `${dev > 0 ? "+" : dev < 0 ? "−" : ""}${Math.abs(dev)}%`}</span>
               </li>
             );
           })}
@@ -424,23 +461,34 @@ function Accounts({ nums, ctx, account }: { nums: Numbers | null; ctx: Context |
 }
 
 function Months({ nums }: { nums: Numbers | null }) {
-  if (!nums) return <section className="sheet"><h2 className="title">Month by month</h2><Skeletons n={4} /></section>;
-  const rows = nums.averages.by_period.slice(-6).reverse();
+  if (!nums) return <section className="sheet"><h2 className="title">Over time</h2><Skeletons n={4} /></section>;
+  // pay periods when there are any, so a salary sits beside what it paid for; calendar months otherwise
+  const byPay = nums.trend.length > 0;
+  const rows = byPay
+    ? nums.trend.map((p) => ({
+        key: String(p.id),
+        label: p.period_end ? `${day(p.period_start)} – ${day(p.period_end)}` : `${day(p.period_start)} – today`,
+        income: p.totals.income,
+        expense: p.totals.expense,
+        net: p.totals.net,
+      }))
+    : nums.averages.by_period.slice(-6).reverse().map((r) => ({ key: r.period, label: monthName.format(new Date(r.period + "-01T00:00:00Z")), ...r }));
   if (!rows.length) return null;
   const top = Math.max(...rows.flatMap((r) => [r.income, r.expense]), 1);
+  const unit = byPay ? "Pay period" : "Month";
   return (
     <section className="sheet" aria-labelledby="months-title">
       <div className="section-head">
-        <h2 className="title" id="months-title">Month by month</h2>
-        <p className="small muted">Calendar months, newest first.</p>
+        <h2 className="title" id="months-title">{byPay ? "Pay period by pay period" : "Month by month"}</h2>
+        <p className="small muted">{byPay ? "Your pay periods, newest first." : "Calendar months, newest first."}</p>
       </div>
       <div className="table-wrap">
         <table className="record cards-sm labelled months">
-          <thead><tr><th scope="col" className="legend">Month</th><th scope="col" className="legend">In and out</th><th scope="col" className="legend num">Net</th></tr></thead>
+          <thead><tr><th scope="col" className="legend">{unit}</th><th scope="col" className="legend">In and out</th><th scope="col" className="legend num">Net</th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.period}>
-                <td data-label="Month">{monthName.format(new Date(r.period + "-01T00:00:00Z"))}</td>
+              <tr key={r.key}>
+                <td data-label={unit}>{r.label}</td>
                 <td data-label="In and out" className="plain">
                   <span className="pair"><i className="in" style={{ width: `${(r.income / top) * 100}%` }} /><span>{money(r.income)}</span></span>
                   <span className="pair"><i className="out" style={{ width: `${(r.expense / top) * 100}%` }} /><span>{money(-r.expense)}</span></span>
