@@ -33,7 +33,7 @@ export function AccountPage({ session }: SessionProps) {
         <ol className="steps">
           <li><div>On a computer, open <strong>gemini.google.com → Settings → Connected Apps</strong>. If it isn't there, open <strong>Personal Intelligence</strong> first.</div></li>
           <li><div>Under <strong>Custom apps</strong>, choose <strong>Add a custom app</strong> and paste the server address. Leave <strong>Advanced features</strong> empty; Gemini registers itself.</div></li>
-          <li><div>Gemini sends you here to sign in and approve. Afterwards, type <code>@</code> in a Gemini prompt and pick Moneytor. It works on the Gemini phone app too.</div></li>
+          <li><div>Gemini sends you here to sign in and approve. Afterwards, type <code>@</code> in a Gemini prompt and pick Moneytor.</div></li>
         </ol>
         <p className="muted small" style={{ marginTop: "var(--s4)" }}>
           As of October 2026, Google offers custom apps only on personal Google accounts in the US, for people 18 and over, in English. If you don't see <strong>Custom apps</strong>, your Google account isn't eligible yet.
