@@ -472,26 +472,47 @@ function WhereItWent({ nums, range, usual, account }: { nums: Numbers | null; ra
   // biggest first; the leftovers that belong to no group go last whatever their size
   lines.sort((a, b) => Number(a.key === "none") - Number(b.key === "none") || b.amt - a.amt);
 
-  // one scale from zero for every row, so lengths compare straight down the column
-  const hi = Math.max(...lines.map((l) => Math.max(l.amt, l.ref ?? 0)), 1);
-  const pos = (v: number) => (v / hi) * 100;
+  // Each row is measured against its own budget (or usual), so the reference is one straight
+  // line at 100% down the whole list and "over" reads as crossing it. The scale stops at 200%;
+  // anything further is cut with a » and its real % stays in the last column.
   const over = (l: Line) => (l.ref ? l.amt / l.ref - 1 : 0);
+  const totalRatio = totalRef ? expense / totalRef : 0;
+  const top = Math.min(2, Math.max(1.25, totalRatio, ...lines.map((l) => over(l) + 1)));
+  const pos = (ratio: number) => (Math.min(ratio, top) / top) * 100;
   const worst = lines.reduce<Line | null>((w, l) => (over(l) > 0.1 && (!w || over(l) > over(w)) ? l : w), null);
   const vs = budget ? "budget" : "usual";
+  const bar = (amt: number, ref: number | null) =>
+    ref ? (
+      <>
+        <i className="out" style={{ left: 0, width: `${Math.max(pos(amt / ref), 0.4)}%` }} />
+        {amt / ref > top && <b className="clip" aria-hidden="true">»</b>}
+        <u style={{ left: `${pos(1)}%` }} aria-hidden="true" />
+      </>
+    ) : (
+      <>
+        <span className="nobar">{budget ? "no budget" : "nothing usual yet"}</span>
+        <u style={{ left: `${pos(1)}%` }} aria-hidden="true" />
+      </>
+    );
 
   return (
     <section className="sheet" aria-labelledby="where-title">
       <div className="section-head">
         <h2 className="title" id="where-title">Where it went</h2>
         <p className="small muted">
-          {budget ? "Each budget group against its budget (the tick)." : u ? `Each category against what you usually spend on it ${range.payPeriod && range.end && !range.live ? "in a pay period" : `by day ${range.days}`} (the tick).` : "Spending by category."} Open a row for the detail.
+          {budget
+            ? "How much of each group's budget is spent. The line is the budget; past it is over."
+            : u
+              ? `Each category against what you usually spend on it ${range.payPeriod && range.end && !range.live ? "in a pay period" : `by day ${range.days}`}. The line is your usual; past it is more.`
+              : "Spending by category."}{" "}
+          Open a row for the detail.
         </p>
       </div>
       {expense === 0 ? <p className="empty">No spending recorded in this period{range.end ? "" : " yet"}.</p> : (
         <ol className="steps-down bars">
           <li className="step head" aria-hidden="true">
             <span className="legend">{budget ? "Group" : "Category"}</span>
-            <span />
+            <span className="track">{(budget || u) && <span className="mark" style={{ left: `${pos(1)}%` }}>{budget ? "Budget" : "Usual"}</span>}</span>
             <span className="legend amt">Spent</span>
             <span className="legend dev">vs {vs}</span>
           </li>
@@ -503,10 +524,7 @@ function WhereItWent({ nums, range, usual, account }: { nums: Numbers | null; ra
                   <span className="legend">
                     <button type="button" className="row-toggle" aria-expanded={isOpen} onClick={() => { setOpen(isOpen ? null : l.key); setPicked(null); }}>{l.label}</button>
                   </span>
-                  <span className="track">
-                    <i className="out" style={{ left: 0, width: `${Math.max(pos(l.amt), 0.4)}%` }} />
-                    {l.ref !== null && <u style={{ left: `${pos(l.ref)}%` }} aria-hidden="true" />}
-                  </span>
+                  <span className="track">{(budget || u) ? bar(l.amt, l.ref) : <i className="out" style={{ left: 0, width: `${(l.amt / lines[0].amt) * 100}%` }} />}</span>
                   <span className="amt">{money(-l.amt)}{l.ref !== null && <span className="of">of {budget ? money(l.ref) : approx(l.ref)}</span>}</span>
                   <span className="dev">{l.ref ? signedPct(l.amt / l.ref) : u || budget ? "—" : ""}</span>
                 </li>
@@ -539,7 +557,7 @@ function WhereItWent({ nums, range, usual, account }: { nums: Numbers | null; ra
           })}
           <li className="step total">
             <span className="legend">Spent</span>
-            <span className="track" />
+            <span className="track">{totalRef ? bar(expense, totalRef) : null}</span>
             <span className="amt">{money(-expense)}{totalRef !== null && <span className="of">of {budget ? money(totalRef) : approx(totalRef)}</span>}</span>
             <span className="dev">{totalRef ? signedPct(expense / totalRef) : ""}</span>
           </li>

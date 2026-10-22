@@ -514,6 +514,15 @@ h3.subtitle {
 .steps-down .step.key .legend, .steps-down .step.key .dev { color: var(--magenta-ink); }
 .steps-down .step.total { border-top: 1px solid var(--ink); }
 .steps-down .step.total .amt { font-size: 1.1875rem; font-weight: 700; }
+/* where it went as shares of the budget: the track fills the row so the 100% line runs unbroken down the list */
+.steps-down.bars .track { align-self: stretch; height: auto; min-height: 20px; margin: calc(-1 * var(--s2)) 0; }
+.steps-down.bars .track i { top: calc(50% - 10px); bottom: auto; height: 20px; }
+.steps-down.bars .track u { top: 0; bottom: 0; }
+.steps-down.bars .step.head .track { margin: 0; min-height: 0; }
+.steps-down.bars .step.head .mark { position: absolute; bottom: 0; transform: translateX(-50%); font-size: 0.8125rem; font-weight: 650; color: var(--ink); white-space: nowrap; }
+.steps-down.bars .track .clip { position: absolute; right: -2px; top: calc(50% - 0.6em); font-size: 0.9375rem; line-height: 1.2; font-weight: 700; background: var(--sheet); padding: 0 2px; }
+.steps-down.bars .step.key .track .clip { background: var(--magenta-tint); }
+.steps-down.bars .track .nobar { position: absolute; left: 0; top: calc(50% - 0.65em); font-size: 0.8125rem; color: var(--ink-2); }
 .steps-down .amt .of { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--ink-2); }
 .steps-down .step.total .amt .of { font-size: 0.8125rem; font-weight: 400; }
 
@@ -542,6 +551,9 @@ h3.subtitle {
   .steps-down .step > .track { grid-area: 2 / 1 / 3 / 2; }
   .steps-down .step > .dev { grid-area: 2 / 2 / 3 / 3; }
   .steps-down .detail { padding: var(--s2) 0 var(--s3) var(--s3); }
+  /* on phones the track sits on its own line, so each row carries its own short line */
+  .steps-down.bars .track { margin: 0; align-self: center; height: 20px; }
+  .steps-down.bars .track u { top: -5px; bottom: -5px; }
   .steps-down .txns > li { grid-template-columns: 3.25rem minmax(0, 1fr) max-content; gap: var(--s2); }
   .steps-down .step.head .legend:first-child, .steps-down .step.head > span:nth-child(2) { display: none; }
   .steps-down .step.head .amt { grid-area: 1 / 1 / 2 / 2; }
