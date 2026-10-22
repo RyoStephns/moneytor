@@ -12,9 +12,10 @@ type Config = {
     database: string;
   };
   defaultCurrency: string;
-  mcpSecretSlug: string;
   allowedCidrs: string[];
-  trustProxy: boolean;
+  trustProxy: boolean | number | string;
+  setupToken: string | undefined;
+  publicBaseUrl: URL;
 };
 
 function required(name: string): string {
@@ -39,13 +40,14 @@ function optionalNumber(name: string, fallback: number): number {
   return parsed;
 }
 
-function optionalBoolean(name: string, fallback: boolean): boolean {
-  const value = process.env[name];
-  if (!value) {
-    return fallback;
-  }
-
-  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+// "true" used to mean trust every hop, which lets any client fake its IP through
+// X-Forwarded-For and walk past the login rate limit. It now means the nginx on this box.
+// A hop count or subnet (e.g. 1, 10.0.0.0/8) passes through for other setups.
+function trustProxySetting(): boolean | number | string {
+  const value = process.env.TRUST_PROXY?.trim().toLowerCase();
+  if (!value || ["1", "true", "yes", "on"].includes(value)) return "loopback";
+  if (["0", "false", "no", "off"].includes(value)) return false;
+  return /^\d+$/.test(value) ? Number(value) : value;
 }
 
 function optionalCsv(name: string): string[] {
@@ -70,9 +72,10 @@ export const config: Config = {
     database: required("MYSQL_DATABASE")
   },
   defaultCurrency: normalizeCurrency(process.env.DEFAULT_CURRENCY || "IDR"),
-  mcpSecretSlug: required("MCP_SECRET_SLUG"),
   allowedCidrs: optionalCsv("ALLOWED_CIDRS"),
-  trustProxy: optionalBoolean("TRUST_PROXY", true)
+  trustProxy: trustProxySetting(),
+  setupToken: process.env.SETUP_TOKEN?.trim() || undefined,
+  publicBaseUrl: new URL(required("PUBLIC_BASE_URL"))
 };
 
 function normalizeCurrency(currency: string): string {

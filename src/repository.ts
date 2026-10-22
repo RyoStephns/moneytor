@@ -75,7 +75,7 @@ type QueryParts = {
 
 type SqlParam = string | number | null;
 
-const pool = mysql.createPool({
+export const pool = mysql.createPool({
   host: config.mysql.host,
   port: config.mysql.port,
   user: config.mysql.user,

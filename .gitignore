@@ -4,3 +4,8 @@ dist/
 coverage/
 .vitest/
 npm-debug.log*
+
+# design tool scratch (comps, captures, build state)
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/build/

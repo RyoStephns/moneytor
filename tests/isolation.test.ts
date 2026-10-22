@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 //
 // To run locally/CI with a DB:
 //   MYSQL_HOST=... MYSQL_USER=... MYSQL_PASSWORD=... MYSQL_DATABASE=... \
-//   MCP_SECRET_SLUG=test npx vitest run tests/isolation.test.ts
+//   PUBLIC_BASE_URL=http://localhost:3000 npx vitest run tests/isolation.test.ts
 //
 // The test seeds user A (owner, id=1) and a second user B, then asserts B can
 // never read/update/delete A's rows by id, that listings never bleed across

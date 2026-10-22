@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  token_hash CHAR(64) NOT NULL,
+  type ENUM('access', 'refresh') NOT NULL,
+  family_id CHAR(36) NOT NULL,
+  client_id VARCHAR(64) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  scopes VARCHAR(500) NULL,
+  resource VARCHAR(2048) NULL,
+  expires_at DATETIME(3) NOT NULL,
+  used_at DATETIME(3) NULL,
+  revoked_at DATETIME(3) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_oauth_tokens_hash (token_hash),
+  INDEX idx_oauth_tokens_family (family_id),
+  INDEX idx_oauth_tokens_user (user_id),
+  INDEX idx_oauth_tokens_expires (expires_at),
+  CONSTRAINT fk_oauth_tokens_client FOREIGN KEY (client_id) REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
+  CONSTRAINT fk_oauth_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)

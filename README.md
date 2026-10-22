@@ -1,15 +1,13 @@
-# Moneytor MCP
+# Moneytor
 
-Remote MCP server for tracking personal income and expenses from Claude.ai. It exposes tools to add, list, update, delete, and summarize transactions stored in MySQL.
+Personal finance tracker you use through an AI assistant. It runs a remote MCP server that Claude and Gemini connect to with OAuth, plus a small web app where people sign in, approve those connections, and the owner hands out invites. Data lives in MySQL and every account only sees its own.
 
 ## Requirements
 
-- Node.js 20+
-- MySQL 5.7+ or 8+
-- Public HTTPS endpoint on your VPS
-- Reverse proxy such as Nginx or Caddy
-
-Claude.ai custom connectors need a reachable remote MCP endpoint. Local stdio MCP servers are for local clients, not Claude.ai web connectors.
+- Node.js 22.12+ (the web app builds with Vite 8)
+- MySQL 8 (5.7 may work but isn't tested)
+- A public HTTPS address on your server
+- A reverse proxy such as Nginx or Caddy on the same machine
 
 ## Setup
 
@@ -20,26 +18,19 @@ cp .env.example .env
 
 Edit `.env`:
 
-- `MYSQL_*`: MySQL connection for the `moneytor` database.
-- `DEFAULT_CURRENCY`: default transaction currency, for example `IDR`.
-- `MCP_SECRET_SLUG`: long random path segment for the MCP URL.
-- `ALLOWED_CIDRS`: optional app-level IP allowlist. Keep `127.0.0.1/32` while testing locally.
+- `MYSQL_*`: connection for the `moneytor` database.
+- `PUBLIC_BASE_URL`: the public HTTPS address, e.g. `https://moneytor.example.com`. OAuth metadata and the MCP address (`<PUBLIC_BASE_URL>/mcp`) come from it.
+- `SETUP_TOKEN`: a long random value used once to claim the owner account.
+- `DEFAULT_CURRENCY`: e.g. `IDR`.
+- `TRUST_PROXY`, `ALLOWED_CIDRS`: optional, see the comments in `.env.example`.
 
-Create the database and user in MySQL, then run:
+Create the database and user, then:
 
 ```bash
 npm run migrate
-npm run build
+npm run build      # server and web app
 npm start
 ```
-
-The MCP endpoint is:
-
-```text
-https://your-domain.example/mcp/<MCP_SECRET_SLUG>
-```
-
-Minimal MySQL bootstrap:
 
 ```sql
 CREATE DATABASE moneytor CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -48,17 +39,28 @@ GRANT ALL PRIVILEGES ON moneytor.* TO 'moneytor'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
+## First run
+
+1. Open `<PUBLIC_BASE_URL>/setup` and enter the `SETUP_TOKEN`, your email and a password. That claims the owner account; anything already recorded becomes yours.
+2. Optionally remove `SETUP_TOKEN` from `.env` and restart. Setup stays closed once the owner has a password either way.
+3. Invite people from **Invites & people**. Each code works once, for one account, until it expires. There's no open sign-up.
+
+## Connecting an assistant
+
+Both use the same address, `<PUBLIC_BASE_URL>/mcp`. The assistant registers itself (OAuth dynamic client registration), sends you to Moneytor to sign in, and asks you to approve. The approval screen shows the app's name and where it returns, and warns about addresses it doesn't recognize.
+
+- **Claude**: Settings → Connectors → Add custom connector, paste the address.
+- **Gemini**: on gemini.google.com, Settings → Connected Apps → Custom apps → Add a custom app, paste the address, leave Advanced features empty. As of October 2026 Google offers this only on personal Google accounts in the US, 18+, in English.
+
+Requests to `/mcp` without a valid token get `401` with a `WWW-Authenticate` header pointing at `/.well-known/oauth-protected-resource/mcp`, which is how clients find the sign-in flow.
+
 ## Tools
 
-- `add_transaction`: records one `income` or `expense` using `DEFAULT_CURRENCY`.
-- `list_transactions`: fetches rows by date range, type, category, account, tag, limit, and offset.
-- `get_finance_summary`: returns totals and breakdowns by category, account, and day/month.
-- `update_transaction`: corrects an existing transaction.
-- `delete_transaction`: deletes a mistaken transaction by `id`.
+The MCP server exposes tools for transactions, categories, pay-period budgets and templates, accounts, transfers and reconciliation, and receivables (money fronted for others). See `src/mcp.ts` for the full list and descriptions.
 
-## Nginx Example
+## Nginx example
 
-Prefer enforcing the Anthropic allowlist at the reverse proxy. Keep your own IP temporarily while testing.
+The whole site goes to the app: the web pages, `/api`, `/mcp`, and the OAuth endpoints (`/authorize`, `/token`, `/register`, `/revoke`, `/.well-known/...`). Pass the client IP so login rate limits work.
 
 ```nginx
 server {
@@ -68,10 +70,7 @@ server {
   ssl_certificate /etc/letsencrypt/live/moneytor.example.com/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/moneytor.example.com/privkey.pem;
 
-  location /mcp/ {
-    allow 160.79.104.0/21;
-    deny all;
-
+  location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
@@ -79,24 +78,22 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
   }
-
-  location /health {
-    proxy_pass http://127.0.0.1:3000;
-  }
 }
 ```
 
-## systemd Example
+An IP allowlist on `/mcp` (Claude connects from `160.79.104.0/21`) still works, but Google doesn't publish Gemini's addresses, so it blocks Gemini.
+
+## systemd example
 
 ```ini
 [Unit]
-Description=Moneytor MCP
+Description=Moneytor
 After=network.target mysql.service
 
 [Service]
 WorkingDirectory=/opt/moneytor
 EnvironmentFile=/opt/moneytor/.env
-ExecStart=/usr/bin/node dist/index.js
+ExecStart=/usr/bin/node dist/src/index.js
 Restart=always
 RestartSec=5
 User=moneytor
@@ -106,20 +103,15 @@ Group=moneytor
 WantedBy=multi-user.target
 ```
 
-Enable it:
-
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now moneytor-mcp
-sudo systemctl status moneytor-mcp
+sudo systemctl enable --now moneytor
 ```
 
-## Claude.ai Connector
+## Development
 
-In Claude.ai, add a custom connector with:
-
-- Name: `Moneytor`
-- URL: `https://your-domain.example/mcp/<MCP_SECRET_SLUG>`
-- Authentication: no authentication
-
-This project uses an authless connector because Claude.ai custom connectors do not support pasted static bearer tokens. Security comes from HTTPS, the secret endpoint path, and reverse-proxy IP allowlisting.
+```bash
+npm run dev        # API and MCP server with reload
+npm run dev:web    # web app on Vite, proxying /api to :3000
+npm test           # needs the MYSQL_* variables of a scratch database
+```

@@ -1,0 +1,363 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-22T12:00:00+07:00",
+  "title": "Design System: Moneytor",
+  "extensions": {
+    "colorMeta": {
+      "zone-0": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(0.17 0 0)",
+        "hex": "#0f0f0f",
+        "tonalRamp": [
+          "#0f0f0f",
+          "#222222",
+          "#353535",
+          "#4a4a4a",
+          "#636363",
+          "#7d7d7d",
+          "#989898",
+          "#b4b4b4",
+          "#d1d1d1",
+          "#e9e9e9",
+          "#fafafa"
+        ]
+      },
+      "zone-1": {
+        "role": "neutral",
+        "displayName": "Hover Ink",
+        "canonical": "oklch(0.25 0 0)",
+        "hex": "#222222"
+      },
+      "zone-2": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "oklch(0.33 0 0)",
+        "hex": "#353535"
+      },
+      "zone-3": {
+        "role": "neutral",
+        "displayName": "Secondary Ink",
+        "canonical": "oklch(0.41 0 0)",
+        "hex": "#4a4a4a"
+      },
+      "zone-4": {
+        "role": "neutral",
+        "displayName": "Placeholder",
+        "canonical": "oklch(0.5 0 0)",
+        "hex": "#636363"
+      },
+      "zone-5": {
+        "role": "neutral",
+        "displayName": "Ramp Mid",
+        "canonical": "oklch(0.59 0 0)",
+        "hex": "#7d7d7d"
+      },
+      "zone-6": {
+        "role": "neutral",
+        "displayName": "Scrollbar",
+        "canonical": "oklch(0.68 0 0)",
+        "hex": "#989898"
+      },
+      "zone-7": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(0.77 0 0)",
+        "hex": "#b4b4b4"
+      },
+      "zone-8": {
+        "role": "neutral",
+        "displayName": "Shimmer",
+        "canonical": "oklch(0.86 0 0)",
+        "hex": "#d1d1d1"
+      },
+      "zone-9": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "canonical": "oklch(0.935 0 0)",
+        "hex": "#e9e9e9"
+      },
+      "zone-10": {
+        "role": "neutral",
+        "displayName": "Sheet",
+        "canonical": "oklch(0.985 0 0)",
+        "hex": "#fafafa"
+      },
+      "magenta": {
+        "role": "primary",
+        "displayName": "Dichroic Magenta",
+        "canonical": "oklch(0.52 0.23 350)",
+        "hex": "#be007b",
+        "tonalRamp": [
+          "#37001d",
+          "#69003b",
+          "#8b0056",
+          "#ae1173",
+          "#d13d91",
+          "#f45fb0",
+          "#ff80d0",
+          "#ffd8e9"
+        ]
+      },
+      "magenta-ink": {
+        "role": "primary",
+        "displayName": "Magenta Ink",
+        "canonical": "oklch(0.45 0.2 350)",
+        "hex": "#9c0064"
+      },
+      "magenta-tint": {
+        "role": "primary",
+        "displayName": "Magenta Tint",
+        "canonical": "oklch(0.93 0.05 350)",
+        "hex": "#ffdbed"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "One page title per screen; uppercase, 62% width, balanced wrap; 2.125rem under 600px."
+      },
+      "display-compact": {
+        "displayName": "Display Compact",
+        "purpose": "The display under 600px (2.125rem)."
+      },
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "MONEYTOR in the top bar only (1.375rem, 62% width, caps)."
+      },
+      "headline": {
+        "displayName": "Record Title",
+        "purpose": "The record card's own title inside the sheet; uppercase, 75% width."
+      },
+      "title": {
+        "displayName": "Subtitle",
+        "purpose": "Subsections inside a card, over a hairline rule; uppercase, 75% width."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "One sentence under the display, max 60ch, zone-2."
+      },
+      "body-large": {
+        "displayName": "Body Large",
+        "purpose": "Input text, and the lede under 600px (1.0625rem)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All running text and record values; tabular numerals globally."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "0.9375rem step below body: hints, inline errors, .small notes, record notes, after-card footer, top-bar nav, value segment, quiet and hold-back buttons, Show/Hide toggle."
+      },
+      "label": {
+        "displayName": "Legend",
+        "purpose": "Row headers, column heads and phone-card labels; uppercase, 75% width, zone-3."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Codes, tokens, server addresses; ligatures off."
+      },
+      "mono-code": {
+        "displayName": "Mono Code",
+        "purpose": "The one-time invite code in the fresh-code block (1.125rem)."
+      }
+    },
+    "shadows": [
+      {
+        "name": "sheet-shadow",
+        "value": "0 18px 32px -20px oklch(0.17 0 0 / 0.35), 0 2px 4px -2px oklch(0.17 0 0 / 0.12)",
+        "purpose": "Record cards only; controls never cast shadows."
+      },
+      {
+        "name": "tracing-sheet",
+        "value": "background: oklch(0.985 0 0 / 0.6); border: 1px solid zone-7; transform: translate(14px, 12px) rotate(1.1deg)",
+        "purpose": "Offset translucent sheet behind the primary record card (6px 8px, 0.8deg on phones)."
+      }
+    ],
+    "patterns": [
+      {
+        "name": "hatch",
+        "value": "repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 6px)",
+        "purpose": "Held back: revoked/expired/disabled status marks, revoke button hover."
+      },
+      {
+        "name": "crosshatch",
+        "value": "repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 6px), repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 6px)",
+        "purpose": "Conflict or error: unknown-host row band, invalid field band, error mark, summary mark."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "All transitions and the sheet entrance."
+      },
+      {
+        "name": "sheet-in",
+        "value": "260ms translateY(10px) → 0",
+        "purpose": "Record card entrance."
+      },
+      {
+        "name": "segment-fill",
+        "value": "420ms scaleX(0 → 1), origin left",
+        "purpose": "Primary value segment fills magenta while aria-busy."
+      },
+      {
+        "name": "button-colour",
+        "value": "160ms background-color, color",
+        "purpose": "Button hover."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "durations 1ms; skeleton shimmer off",
+        "purpose": "prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "max-width: 599px",
+        "purpose": "Stacked records, full-width actions, text value segment under label, top bar wraps."
+      }
+    ],
+    "focus": {
+      "value": "outline: 2px solid magenta; outline-offset: 2px (0 on inputs)",
+      "purpose": "Global focus-visible ring."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button with Value Segment",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one primary action; the segment names the consequence and fills magenta only while busy.",
+      "html": "<button class=\"ds-btn ds-btn-primary\"><span>Allow access</span><span class=\"ds-seg\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"square\" aria-hidden=\"true\"><path d=\"M4 12h15M13 6l6 6-6 6\"/></svg>claude.ai</span></button> <button class=\"ds-btn ds-btn-primary\" aria-busy=\"true\"><span>Approving…</span><span class=\"ds-seg\">claude.ai</span></button>",
+      "css": ".ds-btn { display: inline-flex; align-items: stretch; min-height: 52px; border: 1px solid oklch(0.17 0 0); border-radius: 0; font: 650 1rem 'Archivo Variable', Archivo, system-ui, sans-serif; letter-spacing: 0.01em; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16,1,0.3,1); } .ds-btn > span { display: inline-flex; align-items: center; gap: 8px; padding: 0 24px; } .ds-btn .ds-seg { position: relative; padding: 0 16px; border-left: 1px solid currentColor; font-weight: 600; font-size: 0.9375rem; isolation: isolate; } .ds-btn .ds-seg::before { content: ''; position: absolute; inset: 0; z-index: -1; background: oklch(0.52 0.23 350); transform: scaleX(0); transform-origin: left center; transition: transform 420ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-primary { background: oklch(0.17 0 0); color: oklch(0.985 0 0); } .ds-btn-primary:hover { background: oklch(0.25 0 0); } .ds-btn-primary[aria-busy='true'] { cursor: progress; } .ds-btn-primary[aria-busy='true'] .ds-seg::before { transform: scaleX(1); } .ds-btn:focus-visible { outline: 2px solid oklch(0.52 0.23 350); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Equal-weight alternative beside the primary (Deny).",
+      "html": "<button class=\"ds-btn-secondary\">Deny</button>",
+      "css": ".ds-btn-secondary { min-height: 52px; padding: 0 24px; border: 1px solid oklch(0.17 0 0); border-radius: 0; background: oklch(0.985 0 0); color: oklch(0.17 0 0); font: 650 1rem 'Archivo Variable', Archivo, system-ui, sans-serif; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-secondary:hover { background: oklch(0.935 0 0); } .ds-btn-secondary:focus-visible { outline: 2px solid oklch(0.52 0.23 350); outline-offset: 2px; }"
+    },
+    {
+      "name": "Quiet and Hold-back Buttons",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Quiet for copy/utility actions; hold-back (revoke) hatches on hover instead of turning red.",
+      "html": "<button class=\"ds-btn-quiet\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"square\" aria-hidden=\"true\"><path d=\"M9 9h11v11H9zM5 15H4V4h11v1\"/></svg>Copy code</button> <button class=\"ds-btn-hold\">Revoke</button>",
+      "css": ".ds-btn-quiet, .ds-btn-hold { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 0; background: transparent; color: oklch(0.17 0 0); font: 650 0.9375rem 'Archivo Variable', Archivo, system-ui, sans-serif; cursor: pointer; } .ds-btn-quiet { border: 1px solid oklch(0.33 0 0); } .ds-btn-quiet:hover { border-color: oklch(0.17 0 0); background: oklch(0.935 0 0); } .ds-btn-hold { border: 1px solid oklch(0.17 0 0); } .ds-btn-hold:hover { background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 6px); } .ds-btn-quiet:focus-visible, .ds-btn-hold:focus-visible { outline: 2px solid oklch(0.52 0.23 350); outline-offset: 2px; }"
+    },
+    {
+      "name": "Field and Invalid Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Label above, hint, inline error with crosshatch mark, square input; invalid gets an ink frame and crosshatch band.",
+      "html": "<div class=\"ds-field\"><label for=\"ds-e\">Email address</label><input id=\"ds-e\" class=\"ds-input\" placeholder=\"you@example.com\"></div><div class=\"ds-field ds-invalid\"><label for=\"ds-c\">Invite code</label><p class=\"ds-error\"><i class=\"ds-err-mark\"></i>Enter the invite code you were given</p><input id=\"ds-c\" class=\"ds-input\"></div>",
+      "css": ".ds-field { display: grid; gap: 8px; margin-bottom: 24px; font-family: 'Archivo Variable', Archivo, system-ui, sans-serif; } .ds-field label { font-weight: 650; } .ds-input { min-height: 48px; padding: 12px; border: 1px solid oklch(0.33 0 0); border-radius: 0; background: oklch(0.985 0 0); color: oklch(0.17 0 0); font: inherit; font-size: 1.0625rem; caret-color: oklch(0.52 0.23 350); } .ds-input::placeholder { color: oklch(0.5 0 0); } .ds-input:hover, .ds-input:focus-visible { border-color: oklch(0.17 0 0); } .ds-input:focus-visible { outline: 2px solid oklch(0.52 0.23 350); outline-offset: 0; } .ds-error { display: flex; gap: 8px; color: oklch(0.17 0 0); font-weight: 650; font-size: 0.9375rem; } .ds-err-mark { width: 14px; height: 14px; flex: none; margin-top: 3px; border: 1.5px solid oklch(0.17 0 0); color: oklch(0.17 0 0); background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 6px), repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 6px); } .ds-invalid .ds-input { border: 2px solid oklch(0.17 0 0); padding-right: 32px; background-image: repeating-linear-gradient(135deg, oklch(0.17 0 0) 0 1px, transparent 1px 6px), repeating-linear-gradient(45deg, oklch(0.17 0 0) 0 1px, transparent 1px 6px); background-size: 14px 100%; background-repeat: no-repeat; background-position: right center; }"
+    },
+    {
+      "name": "Record Card with Ruled Table",
+      "kind": "card",
+      "refersTo": "record-card",
+      "description": "Sheet with its own condensed-caps title, offset tracing sheet, ruled rows in the legend voice, magenta key row and crosshatched conflict row.",
+      "html": "<section class=\"ds-sheet\"><h2 class=\"ds-title\">Access request</h2><table class=\"ds-record\"><tr><th>Application</th><td>Claude</td></tr><tr class=\"ds-key\"><th>Returns to</th><td>claude.ai<span class=\"ds-note\">Claude's own address.</span></td></tr><tr class=\"ds-key ds-conflict\"><th>Returns to</th><td>mcp-helper.example.net<span class=\"ds-note\">Moneytor doesn't recognize this address.</span></td></tr><tr><th>Can't</th><td class=\"ds-plain\">See your password</td></tr></table></section>",
+      "css": ".ds-sheet { position: relative; isolation: isolate; padding: 32px; margin: 0 16px 16px 0; font-family: 'Archivo Variable', Archivo, system-ui, sans-serif; font-variant-numeric: tabular-nums; color: oklch(0.17 0 0); } .ds-sheet::before, .ds-sheet::after { content: ''; position: absolute; inset: -1px; z-index: -1; } .ds-sheet::before { background: oklch(0.985 0 0 / 0.6); border: 1px solid oklch(0.77 0 0); transform: translate(14px, 12px) rotate(1.1deg); } .ds-sheet::after { background: oklch(0.985 0 0); border: 1px solid oklch(0.33 0 0); box-shadow: 0 18px 32px -20px oklch(0.17 0 0 / 0.35), 0 2px 4px -2px oklch(0.17 0 0 / 0.12); } .ds-title { margin: 0 0 16px; font-stretch: 75%; font-weight: 700; font-size: 1.4375rem; text-transform: uppercase; letter-spacing: 0.03em; } .ds-record { width: 100%; border-collapse: collapse; border-top: 2px solid oklch(0.17 0 0); } .ds-record th, .ds-record td { padding: 12px; border-bottom: 1px solid oklch(0.77 0 0); text-align: left; vertical-align: top; } .ds-record th { width: 34%; font-stretch: 75%; font-weight: 650; font-size: 0.8125rem; letter-spacing: 0.09em; text-transform: uppercase; color: oklch(0.41 0 0); padding-top: 15px; } .ds-record td { font-weight: 600; } .ds-record td.ds-plain { font-weight: 400; } .ds-note { display: block; margin-top: 4px; font-weight: 400; font-size: 0.9375rem; color: oklch(0.33 0 0); } .ds-key > * { background: oklch(0.93 0.05 350); } .ds-key th { color: oklch(0.45 0.2 350); } .ds-conflict td { position: relative; padding-right: 60px; } .ds-conflict td::after { content: ''; position: absolute; inset: 0 0 0 auto; width: 48px; color: oklch(0.52 0.23 350 / 0.55); background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 6px), repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 6px); border-left: 1px solid oklch(0.52 0.23 350); }"
+    },
+    {
+      "name": "Top Bar",
+      "kind": "nav",
+      "refersTo": "topbar",
+      "description": "Ink strip with ramp-strip wordmark; current page underlined in magenta.",
+      "html": "<header class=\"ds-topbar\"><a class=\"ds-wordmark\" href=\"#\"><span class=\"ds-ramp\"><i style=\"background:oklch(0.17 0 0)\"></i><i style=\"background:oklch(0.25 0 0)\"></i><i style=\"background:oklch(0.33 0 0)\"></i><i style=\"background:oklch(0.41 0 0)\"></i><i style=\"background:oklch(0.5 0 0)\"></i><i style=\"background:oklch(0.59 0 0)\"></i><i style=\"background:oklch(0.68 0 0)\"></i><i style=\"background:oklch(0.77 0 0)\"></i><i style=\"background:oklch(0.86 0 0)\"></i><i style=\"background:oklch(0.935 0 0)\"></i><i style=\"background:oklch(0.985 0 0)\"></i></span>Moneytor</a><nav><a href=\"#\" aria-current=\"page\">Home</a><a href=\"#\">Invites &amp; people</a></nav></header>",
+      "css": ".ds-topbar { display: flex; align-items: center; gap: 24px; min-height: 60px; padding: 12px 32px; background: oklch(0.17 0 0); color: oklch(0.985 0 0); font-family: 'Archivo Variable', Archivo, system-ui, sans-serif; } .ds-wordmark { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; font-stretch: 62%; font-weight: 700; font-size: 1.375rem; letter-spacing: 0.04em; text-transform: uppercase; } .ds-ramp { display: flex; height: 12px; border: 1px solid oklch(0.68 0 0); } .ds-ramp i { width: 9px; } .ds-topbar nav { margin-left: auto; display: flex; gap: 16px; font-size: 0.9375rem; } .ds-topbar nav a { color: oklch(0.86 0 0); text-decoration: none; padding: 4px 0; border-bottom: 2px solid transparent; } .ds-topbar nav a:hover { color: oklch(0.985 0 0); } .ds-topbar nav a[aria-current='page'] { color: oklch(0.985 0 0); border-bottom-color: oklch(0.52 0.23 350); } .ds-topbar a:focus-visible { outline: 2px solid oklch(0.52 0.23 350); outline-offset: 2px; }"
+    },
+    {
+      "name": "Error Summary",
+      "kind": "custom",
+      "refersTo": "error-summary",
+      "description": "GOV.UK-pattern summary: 2px ink frame, crosshatch mark, linked messages; never red.",
+      "html": "<div class=\"ds-summary\" role=\"alert\"><h2>There is a problem</h2><ul><li><a href=\"#\">Enter the invite code you were given</a></li><li><a href=\"#\">Enter your email address</a></li></ul></div>",
+      "css": ".ds-summary { border: 2px solid oklch(0.17 0 0); background: oklch(0.985 0 0); padding: 16px 24px; font-family: 'Archivo Variable', Archivo, system-ui, sans-serif; color: oklch(0.17 0 0); } .ds-summary h2 { display: flex; align-items: center; gap: 12px; margin: 0 0 8px; font-size: 1.1875rem; font-weight: 700; } .ds-summary h2::before { content: ''; width: 18px; height: 18px; flex: none; border: 1.5px solid oklch(0.17 0 0); color: oklch(0.17 0 0); background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 6px), repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 6px); } .ds-summary ul { margin: 0; padding-left: 1.1em; } .ds-summary a { color: oklch(0.17 0 0); font-weight: 650; text-underline-offset: 0.2em; } .ds-summary a:hover { text-decoration-color: oklch(0.52 0.23 350); } .ds-summary a:focus-visible { outline: 2px solid oklch(0.52 0.23 350); outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Marks",
+      "kind": "chip",
+      "refersTo": "status",
+      "description": "12px square marks: hollow waiting, solid used/active, hatched revoked/expired/disabled; never colour alone.",
+      "html": "<span class=\"ds-status\"><i></i>Waiting</span> <span class=\"ds-status ds-used\"><i></i>Used</span> <span class=\"ds-status ds-held\"><i></i>Revoked</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; gap: 8px; margin-right: 16px; font: 500 1rem 'Archivo Variable', Archivo, system-ui, sans-serif; color: oklch(0.17 0 0); } .ds-status i { width: 12px; height: 12px; border: 1.5px solid oklch(0.17 0 0); } .ds-used i { background: oklch(0.17 0 0); } .ds-held { color: oklch(0.41 0 0); } .ds-held i { color: oklch(0.41 0 0); border-color: oklch(0.41 0 0); background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 6px); }"
+    },
+    {
+      "name": "Warning Notice",
+      "kind": "custom",
+      "refersTo": "notice-warn",
+      "description": "Plain warning above the actions when the return host is unknown.",
+      "html": "<div class=\"ds-warn\" role=\"note\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"square\" aria-hidden=\"true\"><path d=\"M12 3l10 18H2L12 3zM12 10v5M12 18v.01\"/></svg><div><strong>Check this address before you approve</strong>An unfamiliar address could be someone trying to get into your account. When in doubt, deny.</div></div>",
+      "css": ".ds-warn { display: flex; gap: 12px; align-items: flex-start; padding: 16px 24px; border: 2px solid oklch(0.52 0.23 350); background: oklch(0.93 0.05 350); color: oklch(0.17 0 0); font: 400 1rem/1.5 'Archivo Variable', Archivo, system-ui, sans-serif; } .ds-warn svg { flex: none; color: oklch(0.45 0.2 350); } .ds-warn strong { display: block; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Exposure Record",
+    "overview": "Every screen is a printer's exposure record. Whatever is being granted or measured sits as a ruled entry on a record card, laid over one fixed neutral ramp. The ground is achromatic grey, never cream. Ink sits at the dark end of an eleven-step zone ramp, and every neutral on the page comes from that ramp. The wordmark carries the ramp as a strip of eleven swatches, so the scale is the identity.\n\nOne dichroic magenta marks the decision in focus and nothing else: the active nav item, the key row of a record, and the primary button's consequence segment while it applies. Titles and legends use condensed, tracked capitals cut from the same variable family as the body, and every figure is set in tabular numerals. Corners are square throughout. Depth is one soft sheet shadow plus a tracing sheet offset behind the record card.\n\nHatching is the system's second signal, used where a colour accent would be ambiguous. It means conflict, error or held back (an unknown return host, a revoked or expired invite, an invalid field, a revoke action). It never decorates and never encodes a balance.",
+    "keyCharacteristics": [
+      "Achromatic zone ramp (chroma 0) as the only neutral scale.",
+      "One accent, magenta, reserved for the decision in focus.",
+      "Condensed tracked caps (Archivo at 62–75% width) for display, titles and row legends; regular width for body.",
+      "Hairline-ruled record tables with a 2px ink head rule.",
+      "Square buttons; the primary carries a value segment that names the consequence.",
+      "Hatching and crosshatching for conflict, error and held-back states, never red."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Magenta is the only hue. It marks what the person is deciding right now: the active page, the key row, the busy primary. If two things on a screen compete for magenta, one of them is wrong.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Red Rule",
+        "body": "Errors are carried by ink and structure: a 2px ink frame, the crosshatch mark, and the \"Error:\" prefix (in the document title and as visually hidden text before each inline message). Never red, and never magenta alone.",
+        "section": "colors"
+      },
+      {
+        "name": "The Hatch Means Trouble Rule",
+        "body": "Hatching (single 135° lines) means held back: revoked or expired invites, the revoke button on hover. Crosshatching (135° plus 45°) means conflict or error: the unknown-host row, the invalid field band, the error mark and the summary mark. Neither ever fills a figure, a balance or a decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Legend Voice Rule",
+        "body": "Every label that names a record field (row headers, column heads, the `data-label` on phone cards) uses the legend voice: condensed, tracked, uppercase, secondary ink. Values are never set in this voice.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Everywhere Rule",
+        "body": "`tabular-nums` is set on the body, so every figure lines up. Mono turns off ligatures.",
+        "section": "typography"
+      },
+      {
+        "name": "The Paper Only Rule",
+        "body": "Depth belongs to record cards. Use one sheet shadow, plus at most one tracing sheet behind the main record on a screen. Controls never cast shadows.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do take every neutral from the zone ramp (`zone-0`–`zone-10`); add no other greys.",
+      "Do keep magenta to the decision in focus: active nav, key row, busy value segment, focus ring, warning notice.",
+      "Do give each record card its own condensed-caps title, and set every row and column label in the legend voice.",
+      "Do carry errors with an ink frame, the crosshatch mark and an \"Error:\" prefix.",
+      "Do put the consequence of a primary action in its value segment, and fill the segment magenta only while `aria-busy` is set.",
+      "Do stack data tables into labelled records under 600px, and stack a text value segment under its button label on phones.",
+      "Do keep every corner square and every figure tabular."
+    ],
+    "donts": [
+      "Don't use red, or any hue other than magenta, for errors, warnings or money out.",
+      "Don't hatch anything that isn't a conflict, error or held-back state. Never hatch balances or decorative fills.",
+      "Don't fill a resting button or a large area with magenta.",
+      "Don't use a cream or tinted ground; the ground has zero chroma.",
+      "Don't round corners or give controls their own shadows.",
+      "Don't add a second display face. Rank type by width, weight and case within Archivo."
+    ]
+  }
+}

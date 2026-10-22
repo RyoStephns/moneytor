@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "repeating-stripes-gradient",
+        "value": "*",
+        "files": [
+          "web/src/styles.css"
+        ],
+        "createdAt": "2026-10-22T04:11:17.675Z",
+        "reason": "Claude, from the direction contract in .impeccable/surfaces/web-src.md: hatching encodes conflict and held-back states only (unknown redirect host, revoked/expired invites), never decoration"
+      }
+    ]
+  }
+}

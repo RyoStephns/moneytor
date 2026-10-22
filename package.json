@@ -5,25 +5,36 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run build:web",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/src/index.js",
     "migrate": "tsx scripts/migrate.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:web": "tsc -p web/tsconfig.json && vite build --config web/vite.config.ts",
+    "dev:web": "vite --config web/vite.config.ts"
   },
   "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.7.1",
     "mysql2": "^3.22.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.1",
     "@types/node": "^25.9.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
+    "vite": "^8.3.5",
     "vitest": "^4.1.9"
   },
   "engines": {
