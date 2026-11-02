@@ -228,4 +228,210 @@ describe.skipIf(!HAS_DB)("receivables (requires MySQL)", () => {
     await repo.settleReceivable(A, paidTo.id, { account: "Dana" });
     expect(await repo.removeAccount(A, "Dana")).toEqual({ account: "Dana", result: "archived" });
   });
+
+  it("partial payments keep the row open, count only what is left, and settle on the last rupiah", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank", opening_balance: 1000000 });
+    await repo.addAccount(A, { name: "Tunai", type: "cash" });
+    const bal = async (name: string) => (await repo.listAccounts(A)).find((a) => a.name === name)?.balance;
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 87300, account: "BCA" });
+    await repo.createReceivable(A, { borrower: "Ditha", amount: 54900, account: "BCA" });
+    expect(await bal("BCA")).toBe(857800);
+
+    const half = await repo.settleReceivable(A, rec.id, { amount: 40000, account: "Tunai", date: "2026-11-02" });
+    expect(half).toMatchObject({ status: "open", amount: 87300, paid: 40000, remaining: 47300, settled_at: null, settled_account: null });
+    expect(half.payments).toHaveLength(1);
+    expect(half.payments[0]).toMatchObject({ amount: 40000, account: "Tunai" });
+    expect(await bal("Tunai")).toBe(40000);
+    expect(await bal("BCA")).toBe(857800);
+
+    const open = await repo.listReceivables(A, {});
+    expect(open.receivables).toHaveLength(2);
+    expect(open.outstanding_total).toBe(102200);
+    expect(open.outstanding_by_borrower).toEqual([{ borrower: "Ditha", count: 2, total: 102200 }]);
+
+    const done = await repo.settleReceivable(A, rec.id, { amount: 47300, account: "BCA" });
+    expect(done).toMatchObject({ status: "settled", paid: 87300, remaining: 0, settled_account: "BCA" });
+    expect(done.payments.map((p) => [p.amount, p.account])).toEqual([[40000, "Tunai"], [47300, "BCA"]]);
+    expect(await bal("Tunai")).toBe(40000);
+    expect(await bal("BCA")).toBe(905100);
+    expect((await repo.listReceivables(A, {})).outstanding_total).toBe(54900);
+    await expect(repo.settleReceivable(A, rec.id, { amount: 1 })).rejects.toThrow(/already settled/);
+  });
+
+  it("a payment above what is left, or not above zero, is refused and changes nothing", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank", opening_balance: 100000 });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 50000 });
+    await repo.settleReceivable(A, rec.id, { amount: 30000 });
+
+    await expect(repo.settleReceivable(A, rec.id, { amount: 20000.01 })).rejects.toThrow(/only has 20000 left/);
+    await expect(repo.settleReceivable(A, rec.id, { amount: 0 })).rejects.toThrow(/greater than zero/);
+    await expect(repo.settleReceivable(A, rec.id, { amount: -5 })).rejects.toThrow(/greater than zero/);
+    const after = (await repo.listReceivables(A, {})).receivables[0];
+    expect(after).toMatchObject({ status: "open", paid: 30000, remaining: 20000 });
+    expect((await repo.listAccounts(A))[0].balance).toBe(80000);
+  });
+
+  it("no amount after a partial payment pays exactly the rest", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 118950 });
+    await repo.settleReceivable(A, rec.id, { amount: 18950.5 });
+    const done = await repo.settleReceivable(A, rec.id, {});
+    expect(done).toMatchObject({ status: "settled", paid: 118950, remaining: 0 });
+    expect(done.payments.map((p) => p.amount)).toEqual([18950.5, 100000 - 0.5]);
+  });
+
+  it("two payments racing for the same remaining cannot both land", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 100000 });
+    const results = await Promise.allSettled([
+      repo.settleReceivable(A, rec.id, { amount: 70000 }),
+      repo.settleReceivable(A, rec.id, { amount: 70000 }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect((await repo.listReceivables(A, {})).receivables[0]).toMatchObject({ paid: 70000, remaining: 30000 });
+  });
+
+  it("update: amount must stay above what is already paid", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 100000 });
+    await repo.settleReceivable(A, rec.id, { amount: 60000 });
+
+    await expect(repo.updateReceivable(A, rec.id, { amount: 60000 })).rejects.toThrow(/already has 60000 paid/);
+    await expect(repo.updateReceivable(A, rec.id, { amount: 50000 })).rejects.toThrow(/already has 60000 paid/);
+    expect(await repo.updateReceivable(A, rec.id, { amount: 80000 })).toMatchObject({ amount: 80000, paid: 60000, remaining: 20000, status: "open" });
+  });
+
+  it("deleting a partly paid receivable takes its payments and their balance effect along", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank", opening_balance: 100000 });
+    await repo.addAccount(A, { name: "Tunai", type: "cash" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 40000, account: "BCA" });
+    await repo.settleReceivable(A, rec.id, { amount: 10000, account: "Tunai" });
+    await repo.deleteReceivable(A, rec.id);
+    const accs = await repo.listAccounts(A);
+    expect(accs.find((a) => a.name === "BCA")?.balance).toBe(100000);
+    expect(accs.find((a) => a.name === "Tunai")?.balance).toBe(0);
+    const [rows] = await pool.execute<import("mysql2/promise").RowDataPacket[]>(`SELECT COUNT(*) AS n FROM receivable_payments WHERE user_id = ?`, [A]);
+    expect(Number(rows[0].n)).toBe(0);
+  });
+
+  it("an account that only received a partial payment is archived, and the account filter finds it", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    await repo.addAccount(A, { name: "Dana", type: "ewallet" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 50000, account: "BCA" });
+    await repo.settleReceivable(A, rec.id, { amount: 10000, account: "Dana" });
+
+    expect((await repo.listReceivables(A, { account: "Dana" })).receivables.map((r) => r.id)).toEqual([rec.id]);
+    expect(await repo.removeAccount(A, "Dana")).toEqual({ account: "Dana", result: "archived" });
+  });
+
+  it("other users cannot pay a receivable that is not theirs", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    await repo.addAccount(B, { name: "BCA", type: "bank" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 1000 });
+    await expect(repo.settleReceivable(B, rec.id, { amount: 500 })).rejects.toThrow(/not found/);
+    expect((await repo.listReceivables(A, {})).receivables[0].paid).toBe(0);
+  });
+
+  it("partial payments keep the row open, count only what is left, and settle on the last rupiah", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank", opening_balance: 1000000 });
+    await repo.addAccount(A, { name: "Tunai", type: "cash" });
+    const bal = async (name: string) => (await repo.listAccounts(A)).find((a) => a.name === name)?.balance;
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 87300, account: "BCA" });
+    await repo.createReceivable(A, { borrower: "Ditha", amount: 54900, account: "BCA" });
+    expect(await bal("BCA")).toBe(857800);
+
+    const half = await repo.settleReceivable(A, rec.id, { amount: 40000, account: "Tunai", date: "2026-11-02" });
+    expect(half).toMatchObject({ status: "open", amount: 87300, paid: 40000, remaining: 47300, settled_at: null, settled_account: null });
+    expect(half.payments).toHaveLength(1);
+    expect(half.payments[0]).toMatchObject({ amount: 40000, account: "Tunai" });
+    expect(await bal("Tunai")).toBe(40000);
+    expect(await bal("BCA")).toBe(857800);
+
+    const open = await repo.listReceivables(A, {});
+    expect(open.receivables).toHaveLength(2);
+    expect(open.outstanding_total).toBe(102200);
+    expect(open.outstanding_by_borrower).toEqual([{ borrower: "Ditha", count: 2, total: 102200 }]);
+
+    const done = await repo.settleReceivable(A, rec.id, { amount: 47300, account: "BCA" });
+    expect(done).toMatchObject({ status: "settled", paid: 87300, remaining: 0, settled_account: "BCA" });
+    expect(done.payments.map((p) => [p.amount, p.account])).toEqual([[40000, "Tunai"], [47300, "BCA"]]);
+    expect(await bal("Tunai")).toBe(40000);
+    expect(await bal("BCA")).toBe(905100);
+    expect((await repo.listReceivables(A, {})).outstanding_total).toBe(54900);
+    await expect(repo.settleReceivable(A, rec.id, { amount: 1 })).rejects.toThrow(/already settled/);
+  });
+
+  it("a payment above what is left, or not above zero, is refused and changes nothing", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank", opening_balance: 100000 });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 50000 });
+    await repo.settleReceivable(A, rec.id, { amount: 30000 });
+
+    await expect(repo.settleReceivable(A, rec.id, { amount: 20000.01 })).rejects.toThrow(/only has 20000 left/);
+    await expect(repo.settleReceivable(A, rec.id, { amount: 0 })).rejects.toThrow(/greater than zero/);
+    await expect(repo.settleReceivable(A, rec.id, { amount: -5 })).rejects.toThrow(/greater than zero/);
+    const after = (await repo.listReceivables(A, {})).receivables[0];
+    expect(after).toMatchObject({ status: "open", paid: 30000, remaining: 20000 });
+    expect((await repo.listAccounts(A))[0].balance).toBe(80000);
+  });
+
+  it("no amount after a partial payment pays exactly the rest", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 118950 });
+    await repo.settleReceivable(A, rec.id, { amount: 18950.5 });
+    const done = await repo.settleReceivable(A, rec.id, {});
+    expect(done).toMatchObject({ status: "settled", paid: 118950, remaining: 0 });
+    expect(done.payments.map((p) => p.amount)).toEqual([18950.5, 100000 - 0.5]);
+  });
+
+  it("two payments racing for the same remaining cannot both land", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 100000 });
+    const results = await Promise.allSettled([
+      repo.settleReceivable(A, rec.id, { amount: 70000 }),
+      repo.settleReceivable(A, rec.id, { amount: 70000 }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect((await repo.listReceivables(A, {})).receivables[0]).toMatchObject({ paid: 70000, remaining: 30000 });
+  });
+
+  it("update: amount must stay above what is already paid", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 100000 });
+    await repo.settleReceivable(A, rec.id, { amount: 60000 });
+
+    await expect(repo.updateReceivable(A, rec.id, { amount: 60000 })).rejects.toThrow(/already has 60000 paid/);
+    await expect(repo.updateReceivable(A, rec.id, { amount: 50000 })).rejects.toThrow(/already has 60000 paid/);
+    expect(await repo.updateReceivable(A, rec.id, { amount: 80000 })).toMatchObject({ amount: 80000, paid: 60000, remaining: 20000, status: "open" });
+  });
+
+  it("deleting a partly paid receivable takes its payments and their balance effect along", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank", opening_balance: 100000 });
+    await repo.addAccount(A, { name: "Tunai", type: "cash" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 40000, account: "BCA" });
+    await repo.settleReceivable(A, rec.id, { amount: 10000, account: "Tunai" });
+    await repo.deleteReceivable(A, rec.id);
+    const accs = await repo.listAccounts(A);
+    expect(accs.find((a) => a.name === "BCA")?.balance).toBe(100000);
+    expect(accs.find((a) => a.name === "Tunai")?.balance).toBe(0);
+    const [rows] = await pool.execute<import("mysql2/promise").RowDataPacket[]>(`SELECT COUNT(*) AS n FROM receivable_payments WHERE user_id = ?`, [A]);
+    expect(Number(rows[0].n)).toBe(0);
+  });
+
+  it("an account that only received a partial payment is archived, and the account filter finds it", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    await repo.addAccount(A, { name: "Dana", type: "ewallet" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 50000, account: "BCA" });
+    await repo.settleReceivable(A, rec.id, { amount: 10000, account: "Dana" });
+
+    expect((await repo.listReceivables(A, { account: "Dana" })).receivables.map((r) => r.id)).toEqual([rec.id]);
+    expect(await repo.removeAccount(A, "Dana")).toEqual({ account: "Dana", result: "archived" });
+  });
+
+  it("other users cannot pay a receivable that is not theirs", async () => {
+    await repo.addAccount(A, { name: "BCA", type: "bank" });
+    await repo.addAccount(B, { name: "BCA", type: "bank" });
+    const rec = await repo.createReceivable(A, { borrower: "Ditha", amount: 1000 });
+    await expect(repo.settleReceivable(B, rec.id, { amount: 500 })).rejects.toThrow(/not found/);
+    expect((await repo.listReceivables(A, {})).receivables[0].paid).toBe(0);
+  });
 });

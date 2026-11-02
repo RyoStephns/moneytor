@@ -514,7 +514,7 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
     "list_receivables",
     {
       title: "List receivables",
-      description: "List money people still owe the user (status open, the default), already paid back (settled), or both (all). Always returns outstanding_total and outstanding_by_borrower, which is who still owes how much. Use it to find the id before mark_receivable_reimbursed. Outstanding receivables are not part of any account balance.",
+      description: "List money people still owe the user (status open, the default), already paid back (settled), or both (all). Each row shows amount, paid, remaining and its payments. Always returns outstanding_total and outstanding_by_borrower, which is who still owes how much (counting only what is left on partly paid rows). Use it to find the id before mark_receivable_reimbursed. Outstanding receivables are not part of any account balance.",
       inputSchema: listReceivablesSchema
     },
     async (input) => jsonResult(await listReceivables(userId, input))
@@ -524,17 +524,17 @@ Status: ok = ≤80% used, warning = 81–100%, over = >100%.`,
     "mark_receivable_reimbursed",
     {
       title: "Mark receivable reimbursed",
-      description: "Mark one receivable as paid back in full. The money returns to the account you pass (a name from list_accounts) or the default account. This is not income: it only raises that account's balance and never changes income, summaries, or averages. Fails if it is already settled. Partial repayment is not supported.",
+      description: "Record a repayment on one receivable. Without amount it settles everything still owed on that row. With amount it is a partial payment: the row stays open with a smaller remaining until the payments add up, then it becomes settled. The amount cannot exceed the row's remaining. When someone pays a sum that covers several of their receivables (for example 100k against four open rows), decide the split with the user (oldest first unless told otherwise) and call this once per row with that row's share; list_receivables shows paid and remaining per row. The money returns to the account you pass (a name from list_accounts) or the default account. This is not income: it only raises that account's balance and never changes income, summaries, or averages. Fails if the row is already settled.",
       inputSchema: markReceivableReimbursedSchema
     },
-    async (input) => jsonResult(await settleReceivable(userId, input.id, { account: input.account, date: input.date }))
+    async (input) => jsonResult(await settleReceivable(userId, input.id, { account: input.account, date: input.date, amount: input.amount }))
   );
 
   server.registerTool(
     "update_receivable",
     {
       title: "Update receivable",
-      description: "Correct a receivable. Only supply what should change. Amount and account can only change while it is still open; borrower, date, and notes can change anytime.",
+      description: "Correct a receivable. Only supply what should change. Amount and account can only change while it is still open, and the amount must stay above what is already paid; borrower, date, and notes can change anytime.",
       inputSchema: updateReceivableSchema
     },
     async (input) => jsonResult(await updateReceivable(userId, input.id, {

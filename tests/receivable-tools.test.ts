@@ -119,4 +119,60 @@ describe.skipIf(!HAS_DB)("receivable tools over MCP (requires MySQL)", () => {
     expect(desc("add_receivable")).toMatch(/not an expense/);
     expect(desc("mark_receivable_reimbursed")).toMatch(/not income/);
   });
+
+  it("one payment of 100k is split over several rows of the same person", async () => {
+    await call("add_account", { name: "BCA", type: "bank", opening_balance: 1000000 });
+    const rows = [];
+    for (const amount of [44684, 118950, 87300, 54900]) rows.push((await call("add_receivable", { borrower: "Ditha", amount })).json.id);
+    expect((await call("list_receivables")).json.outstanding_total).toBe(305834);
+
+    const first = await call("mark_receivable_reimbursed", { id: rows[0], amount: 44684 });
+    expect(first.json).toMatchObject({ status: "settled", remaining: 0 });
+    const second = await call("mark_receivable_reimbursed", { id: rows[1], amount: 55316 });
+    expect(second.json).toMatchObject({ status: "open", paid: 55316, remaining: 63634 });
+
+    const listed = (await call("list_receivables")).json;
+    expect(listed.outstanding_total).toBe(205834);
+    expect(listed.outstanding_by_borrower).toEqual([{ borrower: "Ditha", count: 3, total: 205834 }]);
+    expect(await balance("BCA")).toBe(1000000 - 305834 + 100000);
+
+    const over = await call("mark_receivable_reimbursed", { id: rows[3], amount: 60000 });
+    expect(over.isError).toBe(true);
+    expect(over.text).toMatch(/only has 54900 left/);
+  });
+
+  it("the tool says partial payment is possible", async () => {
+    const tool = (await client.listTools()).tools.find((t) => t.name === "mark_receivable_reimbursed");
+    expect(tool?.description).toMatch(/partial payment/);
+    expect(tool?.description).not.toMatch(/not supported/);
+    expect(JSON.stringify(tool?.inputSchema)).toMatch(/"amount"/);
+  });
+
+  it("one payment of 100k is split over several rows of the same person", async () => {
+    await call("add_account", { name: "BCA", type: "bank", opening_balance: 1000000 });
+    const rows = [];
+    for (const amount of [44684, 118950, 87300, 54900]) rows.push((await call("add_receivable", { borrower: "Ditha", amount })).json.id);
+    expect((await call("list_receivables")).json.outstanding_total).toBe(305834);
+
+    const first = await call("mark_receivable_reimbursed", { id: rows[0], amount: 44684 });
+    expect(first.json).toMatchObject({ status: "settled", remaining: 0 });
+    const second = await call("mark_receivable_reimbursed", { id: rows[1], amount: 55316 });
+    expect(second.json).toMatchObject({ status: "open", paid: 55316, remaining: 63634 });
+
+    const listed = (await call("list_receivables")).json;
+    expect(listed.outstanding_total).toBe(205834);
+    expect(listed.outstanding_by_borrower).toEqual([{ borrower: "Ditha", count: 3, total: 205834 }]);
+    expect(await balance("BCA")).toBe(1000000 - 305834 + 100000);
+
+    const over = await call("mark_receivable_reimbursed", { id: rows[3], amount: 60000 });
+    expect(over.isError).toBe(true);
+    expect(over.text).toMatch(/only has 54900 left/);
+  });
+
+  it("the tool says partial payment is possible", async () => {
+    const tool = (await client.listTools()).tools.find((t) => t.name === "mark_receivable_reimbursed");
+    expect(tool?.description).toMatch(/partial payment/);
+    expect(tool?.description).not.toMatch(/not supported/);
+    expect(JSON.stringify(tool?.inputSchema)).toMatch(/"amount"/);
+  });
 });

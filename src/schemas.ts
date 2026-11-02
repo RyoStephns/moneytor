@@ -241,6 +241,7 @@ export const listReceivablesSchema = {
 
 export const markReceivableReimbursedSchema = {
   id: z.number().int().positive().describe("ID of the receivable that was paid back."),
+  amount: z.number().positive().optional().describe("How much was paid back on this receivable, as a positive number. Omit to settle everything still owed on it. Must not exceed its remaining amount."),
   account: z.string().max(120).optional().describe("Account the money came back into, exactly as listed by list_accounts. Omit to use the default account."),
   date: z.string().optional().describe("When it was paid back. ISO date or datetime. Omit for now.")
 };

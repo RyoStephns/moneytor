@@ -919,7 +919,7 @@ const ACCOUNT_BALANCE_SQL = `(
   - COALESCE((SELECT SUM(amount) FROM transfers WHERE from_account_id = accounts.id AND user_id = accounts.user_id), 0)
   + COALESCE((SELECT SUM(amount) FROM account_adjustments WHERE account_id = accounts.id AND user_id = accounts.user_id), 0)
   - COALESCE((SELECT SUM(amount) FROM receivables WHERE account_id = accounts.id AND user_id = accounts.user_id), 0)
-  + COALESCE((SELECT SUM(amount) FROM receivables WHERE settled_account_id = accounts.id AND user_id = accounts.user_id), 0)
+  + COALESCE((SELECT SUM(amount) FROM receivable_payments WHERE account_id = accounts.id AND user_id = accounts.user_id), 0)
 )`;
 
 export type AccountWithBalance = Account & { balance: number };
@@ -1041,9 +1041,10 @@ export async function removeAccount(userId: number, name: string): Promise<{ acc
           (SELECT COUNT(*) FROM transactions WHERE user_id = ? AND account_id = ?) +
           (SELECT COUNT(*) FROM transfers WHERE user_id = ? AND (from_account_id = ? OR to_account_id = ?)) +
           (SELECT COUNT(*) FROM account_adjustments WHERE user_id = ? AND account_id = ?) +
-          (SELECT COUNT(*) FROM receivables WHERE user_id = ? AND (account_id = ? OR settled_account_id = ?)) AS used
+          (SELECT COUNT(*) FROM receivables WHERE user_id = ? AND (account_id = ? OR settled_account_id = ?)) +
+          (SELECT COUNT(*) FROM receivable_payments WHERE user_id = ? AND account_id = ?) AS used
       `,
-      [userId, acc.id, userId, acc.id, acc.id, userId, acc.id, userId, acc.id, acc.id]
+      [userId, acc.id, userId, acc.id, acc.id, userId, acc.id, userId, acc.id, acc.id, userId, acc.id]
     );
 
     const hasHistory = Number(used[0].used) > 0;
@@ -1277,16 +1278,25 @@ export async function getAccountOverview(userId: number, includeArchived = false
 
 export type ReceivableStatus = "open" | "settled";
 
+export type ReceivablePayment = {
+  amount: number;
+  account: string;
+  paid_at: string;
+};
+
 export type Receivable = {
   id: number;
   borrower: string;
   amount: number;
+  paid: number;
+  remaining: number;
   account: string;
   occurred_at: string;
   notes: string | null;
   status: ReceivableStatus;
   settled_at: string | null;
   settled_account: string | null;
+  payments: ReceivablePayment[];
   created_at: string;
 };
 
@@ -1314,25 +1324,56 @@ export type ReceivableFilters = {
   offset?: number;
 };
 
+// What has been paid back on a row, read through idx_receivable_payments_receivable
+// instead of summarising every user's payments for each list call.
+const PAID_SQL = "COALESCE((SELECT SUM(p.amount) FROM receivable_payments p WHERE p.receivable_id = r.id), 0)";
 const RECEIVABLE_COLS =
-  "r.id, r.borrower, r.amount, a.name AS account, r.occurred_at, r.notes, r.status, r.settled_at, sa.name AS settled_account, r.created_at";
+  `r.id, r.borrower, r.amount, ${PAID_SQL} AS paid, a.name AS account, r.occurred_at, r.notes, r.status, r.settled_at, sa.name AS settled_account, r.created_at`;
 const RECEIVABLE_FROM =
   "FROM receivables r JOIN accounts a ON a.id = r.account_id AND a.user_id = r.user_id LEFT JOIN accounts sa ON sa.id = r.settled_account_id AND sa.user_id = r.user_id";
 
+const cents = (n: number) => Math.round(n * 100);
+const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : String(d));
+
 function mapReceivable(row: mysql.RowDataPacket): Receivable {
-  const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : String(d));
+  const amount = Number(row.amount);
+  const paid = Number(row.paid);
   return {
     id: Number(row.id),
     borrower: String(row.borrower),
-    amount: Number(row.amount),
+    amount,
+    paid: round2(paid),
+    remaining: round2(amount - paid),
     account: String(row.account),
     occurred_at: iso(row.occurred_at),
     notes: row.notes,
     status: row.status,
     settled_at: row.settled_at === null ? null : iso(row.settled_at),
     settled_account: row.settled_account,
+    payments: [],
     created_at: iso(row.created_at),
   };
+}
+
+// One query for the payments of a whole page of receivables.
+async function attachPayments(userId: number, recs: Receivable[]): Promise<Receivable[]> {
+  if (recs.length === 0) return recs;
+  const [rows] = await pool.execute<mysql.RowDataPacket[]>(
+    `SELECT p.receivable_id, p.amount, p.paid_at, a.name AS account
+     FROM receivable_payments p JOIN accounts a ON a.id = p.account_id AND a.user_id = p.user_id
+     WHERE p.user_id = ? AND p.receivable_id IN (${recs.map(() => "?").join(", ")})
+     ORDER BY p.paid_at, p.id`,
+    [userId, ...recs.map((r) => r.id)]
+  );
+  const byId = new Map(recs.map((r) => [r.id, r]));
+  for (const p of rows) {
+    byId.get(Number(p.receivable_id))?.payments.push({
+      amount: Number(p.amount),
+      account: String(p.account),
+      paid_at: iso(p.paid_at),
+    });
+  }
+  return recs;
 }
 
 async function getReceivable(userId: number, id: number): Promise<Receivable> {
@@ -1341,7 +1382,7 @@ async function getReceivable(userId: number, id: number): Promise<Receivable> {
     [id, userId]
   );
   if (rows.length === 0) throw new Error(`Receivable not found: ${id}`);
-  return mapReceivable(rows[0]);
+  return (await attachPayments(userId, [mapReceivable(rows[0])]))[0];
 }
 
 export async function createReceivable(userId: number, input: ReceivableInput): Promise<Receivable> {
@@ -1357,18 +1398,62 @@ export async function createReceivable(userId: number, input: ReceivableInput): 
   return getReceivable(userId, res.insertId);
 }
 
-export async function settleReceivable(userId: number, id: number, input: { account?: string; date?: string }): Promise<Receivable> {
+// Records one repayment. No amount means "everything still owed on this row".
+// A smaller amount is a partial payment: the row stays open until the payments add up
+// to its amount, then it becomes settled (settled_at/settled_account = the last payment).
+export async function settleReceivable(
+  userId: number,
+  id: number,
+  input: { account?: string; date?: string; amount?: number }
+): Promise<Receivable> {
   const wanted = input.account?.trim();
   const accountId = wanted ? await accountIdByName(userId, wanted) : await defaultAccountId(userId);
   if (!accountId) throw new Error("No account to receive the money. Pass an account, or set a default with set_default_account.");
+  if (input.amount !== undefined && !(input.amount > 0)) throw new Error("Payment amount must be greater than zero.");
+  const paidAt = parseInputDate(input.date);
 
-  const [res] = await pool.execute<mysql.ResultSetHeader>(
-    `UPDATE receivables SET status = 'settled', settled_at = ?, settled_account_id = ? WHERE id = ? AND user_id = ? AND status = 'open'`,
-    [parseInputDate(input.date), accountId, id, userId]
-  );
-  const rec = await getReceivable(userId, id);
-  if (res.affectedRows === 0) throw new Error(`Receivable ${id} (${rec.borrower}) is already settled.`);
-  return rec;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // the row lock keeps two payments from both fitting into the same remaining amount
+    const [rows] = await conn.execute<mysql.RowDataPacket[]>(
+      `SELECT amount, borrower, status FROM receivables WHERE id = ? AND user_id = ? FOR UPDATE`,
+      [id, userId]
+    );
+    if (rows.length === 0) throw new Error(`Receivable not found: ${id}`);
+    const rec = rows[0];
+    if (rec.status === "settled") throw new Error(`Receivable ${id} (${rec.borrower}) is already settled.`);
+
+    const [sum] = await conn.execute<mysql.RowDataPacket[]>(
+      `SELECT COALESCE(SUM(amount), 0) AS paid FROM receivable_payments WHERE receivable_id = ? AND user_id = ?`,
+      [id, userId]
+    );
+    const remainingCents = cents(Number(rec.amount)) - cents(Number(sum[0].paid));
+    const payCents = input.amount === undefined ? remainingCents : cents(input.amount);
+    if (payCents > remainingCents) {
+      throw new Error(
+        `Receivable ${id} (${rec.borrower}) only has ${round2(remainingCents / 100)} left to pay, but ${round2(payCents / 100)} was given.`
+      );
+    }
+
+    await conn.execute(
+      `INSERT INTO receivable_payments (user_id, receivable_id, amount, account_id, paid_at) VALUES (?, ?, ?, ?, ?)`,
+      [userId, id, payCents / 100, accountId, paidAt]
+    );
+    if (payCents === remainingCents) {
+      await conn.execute(
+        `UPDATE receivables SET status = 'settled', settled_at = ?, settled_account_id = ? WHERE id = ? AND user_id = ?`,
+        [paidAt, accountId, id, userId]
+      );
+    }
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+  return getReceivable(userId, id);
 }
 
 export async function listReceivables(userId: number, filters: ReceivableFilters) {
@@ -1376,9 +1461,11 @@ export async function listReceivables(userId: number, filters: ReceivableFilters
   const params: SqlParam[] = [userId];
 
   addClause(clauses, params, "r.borrower = ?", filters.borrower?.trim());
-  // either side counts: where the money left or where it came back to
+  // either side counts: where the money left or where any repayment came back to
   if (filters.account) {
-    clauses.push("(a.name = ? OR sa.name = ?)");
+    clauses.push(
+      "(a.name = ? OR EXISTS (SELECT 1 FROM receivable_payments fp JOIN accounts fa ON fa.id = fp.account_id AND fa.user_id = fp.user_id WHERE fp.receivable_id = r.id AND fa.name = ?))"
+    );
     params.push(filters.account, filters.account);
   }
   const baseWhere = clauses.join(" AND ");
@@ -1393,15 +1480,16 @@ export async function listReceivables(userId: number, filters: ReceivableFilters
     params
   );
 
-  // outstanding ignores the status/limit filters: it is always what is still owed
+  // outstanding ignores the status/limit filters: it is always what is still owed,
+  // so a half-paid row counts only for what is left of it
   const [owed] = await pool.execute<mysql.RowDataPacket[]>(
-    `SELECT r.borrower, COUNT(*) AS n, SUM(r.amount) AS total ${RECEIVABLE_FROM} WHERE ${baseWhere} AND r.status = 'open' GROUP BY r.borrower ORDER BY total DESC`,
+    `SELECT r.borrower, COUNT(*) AS n, SUM(r.amount - ${PAID_SQL}) AS total ${RECEIVABLE_FROM} WHERE ${baseWhere} AND r.status = 'open' GROUP BY r.borrower ORDER BY total DESC`,
     params
   );
-  const byBorrower = owed.map((o) => ({ borrower: String(o.borrower), count: Number(o.n), total: Number(o.total) }));
+  const byBorrower = owed.map((o) => ({ borrower: String(o.borrower), count: Number(o.n), total: round2(Number(o.total)) }));
 
   return {
-    receivables: rows.map(mapReceivable),
+    receivables: await attachPayments(userId, rows.map(mapReceivable)),
     outstanding_total: round2(byBorrower.reduce((s, b) => s + b.total, 0)),
     outstanding_by_borrower: byBorrower,
   };
@@ -1414,6 +1502,9 @@ export async function updateReceivable(userId: number, id: number, input: Update
     throw new Error(`Receivable ${id} is already settled. Only borrower, date and notes can change now.`);
   }
   if (input.amount !== undefined && !(input.amount > 0)) throw new Error("Receivable amount must be greater than zero.");
+  if (input.amount !== undefined && cents(input.amount) <= cents(rec.paid)) {
+    throw new Error(`Receivable ${id} already has ${rec.paid} paid, so its amount must stay above that. To close it, pay the rest with mark_receivable_reimbursed.`);
+  }
 
   const updates: string[] = [];
   const params: SqlParam[] = [];
