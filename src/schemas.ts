@@ -75,6 +75,15 @@ export const addCategorySchema = {
   name: z.string().min(1).max(120).describe("Category name to register.")
 };
 
+export const updateCategorySchema = {
+  name: z.string().trim().min(1).max(120).describe("Current category name, as in list_categories."),
+  new_name: z.string().trim().min(1).max(120).describe("New name for the category.")
+};
+
+export const deleteCategorySchema = {
+  name: z.string().trim().min(1).max(120).describe("Category to delete, as in list_categories.")
+};
+
 // ─── Budget ───────────────────────────────────────────────────────────────────
 
 const groupInputSchema = z.object({

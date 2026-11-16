@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   addCategory,
+  renameCategory,
+  deleteCategory,
   addTransaction,
   deleteTransaction,
   deleteTransactions,
@@ -44,6 +46,8 @@ import {
 } from "./repository.js";
 import {
   addCategorySchema,
+  updateCategorySchema,
+  deleteCategorySchema,
   addTransactionSchema,
   averagesSchema,
   deleteTransactionSchema,
@@ -155,6 +159,27 @@ export function createMoneytorServer(userId: number): McpServer {
       inputSchema: addCategorySchema
     },
     async (input) => jsonResult(await addCategory(userId, input.name))
+  );
+
+  server.registerTool(
+    "update_category",
+    {
+      title: "Rename category",
+      description: "Rename a category. Transactions, budget groups and budget templates that use it switch to the new name too, so old reports stay in one piece. Fails if the new name already exists.",
+      inputSchema: updateCategorySchema
+    },
+    async (input) => jsonResult(await renameCategory(userId, input.name, input.new_name))
+  );
+
+  server.registerTool(
+    "delete_category",
+    {
+      title: "Delete category",
+      description: "Delete a category nothing uses. Refused while a transaction, budget group or budget template still uses it; the error says how many. To fix a misspelled name use update_category instead.",
+      inputSchema: deleteCategorySchema,
+      annotations: { destructiveHint: true }
+    },
+    async (input) => jsonResult(await deleteCategory(userId, input.name))
   );
 
   server.registerTool(

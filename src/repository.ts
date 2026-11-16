@@ -108,6 +108,123 @@ export async function addCategory(userId: number, name: string): Promise<{ name:
   return { name: trimmed };
 }
 
+// category columns are utf8mb4_unicode_ci (blind to case and accents); template JSON is matched in JS, so fold the same way
+const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+type CategoryUsage = { transactions: number; budget_groups: number; templates: number };
+
+async function lockTemplates(conn: mysql.PoolConnection, userId: number) {
+  const [rows] = await conn.execute<mysql.RowDataPacket[]>(
+    `SELECT id, groups_json FROM budget_templates WHERE user_id = ? FOR UPDATE`,
+    [userId]
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    groups: (typeof r.groups_json === "string" ? JSON.parse(r.groups_json) : r.groups_json) as GroupInput[]
+  }));
+}
+
+// category names are plain text in all three places, no FK
+async function categoryUsage(conn: mysql.PoolConnection, userId: number, name: string): Promise<CategoryUsage> {
+  const [tx] = await conn.execute<mysql.RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM transactions WHERE user_id = ? AND category = ?`,
+    [userId, name]
+  );
+  const [bg] = await conn.execute<mysql.RowDataPacket[]>(
+    `SELECT COUNT(DISTINCT bg.id) AS n
+     FROM budget_group_categories bgc
+     JOIN budget_groups bg ON bg.id = bgc.budget_group_id
+     WHERE bg.user_id = ? AND bgc.category = ?`,
+    [userId, name]
+  );
+  const key = fold(name);
+  const tpl = (await lockTemplates(conn, userId)).filter((t) => t.groups.some((g) => g.categories.some((c) => fold(c) === key)));
+  return { transactions: Number(tx[0].n), budget_groups: Number(bg[0].n), templates: tpl.length };
+}
+
+const usageTotal = (u: CategoryUsage) => u.transactions + u.budget_groups + u.templates;
+
+export async function renameCategory(userId: number, name: string, newName: string) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [src] = await conn.execute<mysql.RowDataPacket[]>(
+      `SELECT id, name FROM categories WHERE user_id = ? AND name = ? LIMIT 1 FOR UPDATE`,
+      [userId, name]
+    );
+    if (!src.length) throw new Error(`Unknown category "${name}". Use list_categories to see valid options.`);
+    const id = Number(src[0].id);
+    const old = String(src[0].name);
+    if (old === newName) throw new Error(`Category is already named "${newName}".`);
+
+    // id <> ? so a case-only rename ("makan" -> "Makan") doesn't clash with itself
+    const [clash] = await conn.execute<mysql.RowDataPacket[]>(
+      `SELECT name FROM categories WHERE user_id = ? AND name = ? AND id <> ? LIMIT 1`,
+      [userId, newName, id]
+    );
+    if (clash.length) throw new Error(`Category "${clash[0].name}" already exists. Pick another name; merging categories is not supported.`);
+
+    // an unregistered name can still sit on old transactions or budget groups
+    if (fold(old) !== fold(newName)) {
+      const taken = await categoryUsage(conn, userId, newName);
+      if (usageTotal(taken)) {
+        throw new Error(`"${newName}" is already used by ${taken.transactions} transaction(s), ${taken.budget_groups} budget group(s), ${taken.templates} template(s) without being a registered category. Renaming into it would merge them.`);
+      }
+    }
+
+    const updated = await categoryUsage(conn, userId, old);
+    await conn.execute(`UPDATE categories SET name = ? WHERE id = ? AND user_id = ?`, [newName, id, userId]);
+    await conn.execute(`UPDATE transactions SET category = ? WHERE user_id = ? AND category = ?`, [newName, userId, old]);
+    await conn.execute(
+      `UPDATE budget_group_categories bgc
+       JOIN budget_groups bg ON bg.id = bgc.budget_group_id
+       SET bgc.category = ?
+       WHERE bg.user_id = ? AND bgc.category = ?`,
+      [newName, userId, old]
+    );
+    const key = fold(old);
+    for (const t of await lockTemplates(conn, userId)) {
+      let hit = false;
+      for (const g of t.groups) {
+        g.categories = g.categories.map((c) => (fold(c) === key ? ((hit = true), newName) : c));
+      }
+      if (hit) await conn.execute(`UPDATE budget_templates SET groups_json = ? WHERE id = ? AND user_id = ?`, [JSON.stringify(t.groups), t.id, userId]);
+    }
+    await conn.commit();
+    return { name: old, renamed_to: newName, updated };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function deleteCategory(userId: number, name: string) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [src] = await conn.execute<mysql.RowDataPacket[]>(
+      `SELECT id, name FROM categories WHERE user_id = ? AND name = ? LIMIT 1 FOR UPDATE`,
+      [userId, name]
+    );
+    if (!src.length) throw new Error(`Unknown category "${name}". Use list_categories to see valid options.`);
+    const old = String(src[0].name);
+    const used = await categoryUsage(conn, userId, old);
+    if (usageTotal(used)) {
+      throw new Error(`Category "${old}" is still used by ${used.transactions} transaction(s), ${used.budget_groups} budget group(s), ${used.templates} template(s). Rename it with update_category instead.`);
+    }
+    await conn.execute(`DELETE FROM categories WHERE id = ? AND user_id = ?`, [Number(src[0].id), userId]);
+    await conn.commit();
+    return { deleted: true, name: old };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
 export async function addTransaction(userId: number, input: AddTransactionInput): Promise<Transaction> {
   const occurredAt = parseInputDate(input.date);
   const tags = normalizeTags(input.tags);

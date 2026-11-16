@@ -149,7 +149,7 @@ describe.skipIf(!HAS_DB)("OAuth connector end to end (requires MySQL)", () => {
     const provider = claudeLike();
     const client = await connect(provider, "a@e2e.test");
     expect((provider.info as { token_endpoint_auth_method?: string }).token_endpoint_auth_method).toBe("none");
-    expect((await client.listTools()).tools).toHaveLength(39);
+    expect((await client.listTools()).tools).toHaveLength(41);
     expect(text(await client.callTool({ name: "list_accounts", arguments: {} }))).toMatchObject({ accounts: [] });
     await client.close();
   });
@@ -165,6 +165,28 @@ describe.skipIf(!HAS_DB)("OAuth connector end to end (requires MySQL)", () => {
     expect(namesB).not.toContain("E2E Only A");
     await a.close();
     await b.close();
+  });
+
+  it("a misspelled category can be renamed through the connector, and only an unused one can be deleted", async () => {
+    const a = await connect(claudeLike(), "a@e2e.test");
+    const call = (name: string, args: Record<string, unknown>) => a.callTool({ name, arguments: args }) as Promise<{ isError?: boolean; content: { text: string }[] }>;
+
+    await call("add_category", { name: "Maknan" });
+    const tx = text(await call("add_transaction", { type: "expense", amount: 5000, category: "Maknan" }));
+
+    const renamed = text(await call("update_category", { name: "Maknan", new_name: "Makan" }));
+    expect(renamed).toMatchObject({ renamed_to: "Makan", updated: { transactions: 1 } });
+    expect(text(await call("list_categories", {}))).toEqual(["Makan"]);
+    expect(JSON.stringify(text(await call("list_transactions", {})))).toContain('"category":"Makan"');
+
+    const refused = await call("delete_category", { name: "Makan" });
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0].text).toMatch(/still used by 1 transaction/);
+
+    await call("delete_transaction", { id: tx.id });
+    expect(text(await call("delete_category", { name: "Makan" }))).toEqual({ deleted: true, name: "Makan" });
+    expect(text(await call("list_categories", {}))).toEqual([]);
+    await a.close();
   });
 
   it("refresh tokens rotate, and replaying an old one shuts the whole grant", async () => {
@@ -197,7 +219,7 @@ describe.skipIf(!HAS_DB)("OAuth connector end to end (requires MySQL)", () => {
     expect(expired.status).toBe(401);
     expect(expired.headers.get("www-authenticate")).toContain("invalid_token");
     // the SDK client refreshes on its own and carries on
-    expect((await client.listTools()).tools.length).toBe(39);
+    expect((await client.listTools()).tools.length).toBe(41);
     expect(provider.saved!.access_token).not.toBe(access);
     await client.close();
 
@@ -230,7 +252,7 @@ describe.skipIf(!HAS_DB)("OAuth connector end to end (requires MySQL)", () => {
     expect(info.token_endpoint_auth_method).toBe("none");
     expect(info.client_secret).toBeUndefined();
     expect(gemini.saved!.refresh_token).toBeTruthy();
-    expect((await client.listTools()).tools).toHaveLength(39);
+    expect((await client.listTools()).tools).toHaveLength(41);
     await client.close();
   });
 });
